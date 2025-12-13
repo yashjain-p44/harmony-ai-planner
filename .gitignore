@@ -29,12 +29,14 @@ wheels/
 *.egg
 MANIFEST
 
-# IDE
+# Cursor and IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+.cursor/
+.plans/
 
 # OS
 .DS_Store
@@ -43,6 +45,11 @@ Thumbs.db
 # Environment variables
 .env
 .env.local
+.env.*.local
+
+# Testing
+coverage
+.nyc_output
 
 # Credentials and tokens
 credentials.json
@@ -50,3 +57,14 @@ token.json
 **/credentials.json
 **/token.json
 
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/.vite/
+frontend/*.local
+frontend/package-lock.json
+
+# Build outputs
+*.log
+*.lock
