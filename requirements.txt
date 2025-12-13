@@ -1,3 +1,5 @@
+# Python backend dependencies
+# For frontend dependencies, see frontend/package.json
 cachetools==6.2.2
 certifi==2025.11.12
 charset-normalizer==3.4.4
