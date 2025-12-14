@@ -30,6 +30,8 @@ from scheduler_app import schedule_plan
 from models.plan_requirement import PlanRequirement
 from scheduler_engine import SchedulingResult
 from app.ai_agent.run_agent import run_agent
+from app.ai_agent.graph import create_agent
+from langchain_core.messages import HumanMessage, AIMessage
 from app.api.models import ChatRequest, ChatResponse
 from pydantic import ValidationError
 
@@ -184,6 +186,7 @@ def chat():
                 success=False,
                 response="",
                 prompt="",
+                messages=[],
                 error="No JSON data provided"
             ).model_dump()), 400
         
@@ -202,17 +205,55 @@ def chat():
                 success=False,
                 response="",
                 prompt=data.get("prompt", ""),
+                messages=[],
                 error=f"Validation error: {'; '.join(errors)}"
             ).model_dump()), 400
         
-        # Run the agent with the validated prompt
-        agent_response = run_agent(chat_request.prompt)
+        # Run the agent and get full state
+        app = create_agent()
+        initial_state = {
+            "messages": [HumanMessage(content=chat_request.prompt)]
+        }
+        result = app.invoke(initial_state)
+        
+        # Extract the final response
+        agent_response = ""
+        if result["messages"]:
+            last_message = result["messages"][-1]
+            if isinstance(last_message, AIMessage):
+                agent_response = last_message.content or ""
+        
+        # Format messages for response
+        formatted_messages = []
+        for msg in result["messages"]:
+            msg_dict = {
+                "type": type(msg).__name__,
+                "content": getattr(msg, 'content', ''),
+            }
+            
+            # Add tool calls if present
+            if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                msg_dict["tool_calls"] = [
+                    {
+                        "name": tc.get("name"),
+                        "args": tc.get("args", {}),
+                        "id": tc.get("id")
+                    }
+                    for tc in msg.tool_calls
+                ]
+            
+            # Add tool call ID for ToolMessage
+            if hasattr(msg, 'tool_call_id'):
+                msg_dict["tool_call_id"] = msg.tool_call_id
+            
+            formatted_messages.append(msg_dict)
         
         # Create and return response using Pydantic model
         chat_response = ChatResponse(
             success=True,
             response=agent_response,
-            prompt=chat_request.prompt
+            prompt=chat_request.prompt,
+            messages=formatted_messages
         )
         
         return jsonify(chat_response.model_dump()), 200
@@ -222,6 +263,7 @@ def chat():
             success=False,
             response="",
             prompt="",
+            messages=[],
             error=f"Internal server error: {str(e)}"
         ).model_dump()), 500
 
