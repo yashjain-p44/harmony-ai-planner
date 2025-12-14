@@ -29,7 +29,6 @@ load_dotenv(dotenv_path=env_path)
 from scheduler_app import schedule_plan
 from models.plan_requirement import PlanRequirement
 from scheduler_engine import SchedulingResult
-from app.ai_agent.run_agent import run_agent
 from app.ai_agent.graph import create_agent
 from langchain_core.messages import HumanMessage, AIMessage
 from app.api.models import ChatRequest, ChatResponse

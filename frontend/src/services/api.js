@@ -1,11 +1,11 @@
 /**
  * API Service Layer
  * 
- * Mock implementation for now. Replace with actual API calls when backend is ready.
+ * Connects to the backend Flask API for AI agent interactions.
  * Uses VITE_API_URL environment variable for base URL.
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5002';
 
 /**
  * Send a user prompt to the assistant
@@ -13,41 +13,32 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
  * @returns {Promise<string>} Assistant's response
  */
 export const sendUserPrompt = async (prompt) => {
-  // Mock implementation - simulate API delay
-  await new Promise((resolve) => setTimeout(resolve, 1000 + Math.random() * 1000));
+  try {
+    const response = await fetch(`${API_BASE_URL}/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ prompt }),
+    });
 
-  // Mock responses based on keywords
-  const lowerPrompt = prompt.toLowerCase();
-  
-  if (lowerPrompt.includes('plan') || lowerPrompt.includes('schedule') || lowerPrompt.includes('requirements')) {
-    return `I'd be happy to help you create a scheduling plan! Let me gather some information about your preferences and requirements. 
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+    }
 
-I can help you set up:
-- Your goals and focus areas
-- Time commitments per week
-- Preferred days for scheduling
-- Fixed commitments to work around
-- Energy preferences (morning vs evening)
+    const data = await response.json();
+    
+    if (!data.success) {
+      throw new Error(data.error || 'Request failed');
+    }
 
-Would you like to fill out the plan requirements?`;
+    // Return the agent's response
+    return data.response || 'No response from agent';
+  } catch (error) {
+    console.error('Error sending prompt to backend:', error);
+    throw error;
   }
-
-  if (lowerPrompt.includes('hello') || lowerPrompt.includes('hi') || lowerPrompt.includes('hey')) {
-    return `Hello! I'm your smart scheduling assistant. I can help you plan your time, find available slots, and optimize your schedule. 
-
-What would you like to work on today?`;
-  }
-
-  // Default response
-  return `I understand you're asking about: "${prompt}"
-
-As a scheduling assistant, I can help you:
-- Create personalized scheduling plans
-- Find available time slots
-- Optimize your calendar
-- Manage your time commitments
-
-Would you like to start by setting up your plan requirements?`;
 };
 
 /**
@@ -89,7 +80,7 @@ export const submitPlanRequirements = async (requirements) => {
  */
 export const healthCheck = async () => {
   try {
-    const response = await fetch(`${API_BASE_URL}/calendar/health`);
+    const response = await fetch(`${API_BASE_URL}/health`);
     if (!response.ok) {
       throw new Error('Health check failed');
     }
