@@ -52,7 +52,8 @@ export const ChatProvider = ({ children }) => {
       addMessage('assistant', response);
     } catch (error) {
       console.error('Error sending message:', error);
-      addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
+      const errorMessage = error.message || 'Sorry, I encountered an error. Please try again.';
+      addMessage('assistant', `Error: ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }
