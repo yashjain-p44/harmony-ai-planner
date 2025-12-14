@@ -41,3 +41,32 @@ The app will be available at `http://localhost:5173` and will automatically open
 ## Backend
 
 Backend API documentation coming soon...
+
+## AI Agent
+
+The AI agent is built with LangGraph and located in `app/ai_agent`.
+
+### Setup
+
+1. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. Set up environment variables:
+   ```bash
+   cp .env.example .env
+   # Edit .env and add your OPENAI_API_KEY
+   ```
+
+### Running the Agent
+
+```bash
+source venv/bin/activate
+python3 app/ai_agent/run_agent.py
+```
+
+Or as a module:
+```bash
+python3 -m app.ai_agent.run_agent
+```
