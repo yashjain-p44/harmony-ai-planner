@@ -6,17 +6,32 @@ RESTful API for scheduling events based on plan requirements.
 
 import sys
 import os
+from pathlib import Path
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from dotenv import load_dotenv
 
 # Add src directory to path to import modules
 src_path = os.path.join(os.path.dirname(__file__), '..', 'src')
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
+# Add project root to path for ai_agent imports
+project_root = os.path.join(os.path.dirname(__file__), '..', '..')
+project_root = os.path.abspath(project_root)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+# Load environment variables from .env file
+env_path = Path(project_root) / ".env"
+load_dotenv(dotenv_path=env_path)
+
 from scheduler_app import schedule_plan
 from models.plan_requirement import PlanRequirement
 from scheduler_engine import SchedulingResult
+from app.ai_agent.run_agent import run_agent
+from app.api.models import ChatRequest, ChatResponse
+from pydantic import ValidationError
 
 
 app = Flask(__name__)
@@ -147,6 +162,68 @@ def schedule_preview():
             "success": False,
             "error": f"Internal server error: {str(e)}"
         }), 500
+
+
+@app.route('/chat', methods=['POST'])
+def chat():
+    """
+    Chat with the AI agent.
+    
+    Request body should be a JSON object with:
+    - prompt: str (the user's message/prompt, 1-10000 characters)
+    
+    Returns:
+        JSON response with the agent's response following ChatResponse model
+    """
+    try:
+        # Get JSON data from request
+        data = request.get_json()
+        
+        if not data:
+            return jsonify(ChatResponse(
+                success=False,
+                response="",
+                prompt="",
+                error="No JSON data provided"
+            ).model_dump()), 400
+        
+        # Validate request using Pydantic model
+        try:
+            chat_request = ChatRequest(**data)
+        except ValidationError as e:
+            # Return validation errors in a user-friendly format
+            errors = []
+            for error in e.errors():
+                field = " -> ".join(str(loc) for loc in error["loc"])
+                message = error["msg"]
+                errors.append(f"{field}: {message}")
+            
+            return jsonify(ChatResponse(
+                success=False,
+                response="",
+                prompt=data.get("prompt", ""),
+                error=f"Validation error: {'; '.join(errors)}"
+            ).model_dump()), 400
+        
+        # Run the agent with the validated prompt
+        agent_response = run_agent(chat_request.prompt)
+        
+        # Create and return response using Pydantic model
+        chat_response = ChatResponse(
+            success=True,
+            response=agent_response,
+            prompt=chat_request.prompt
+        )
+        
+        return jsonify(chat_response.model_dump()), 200
+        
+    except Exception as e:
+        return jsonify(ChatResponse(
+            success=False,
+            response="",
+            prompt="",
+            error=f"Internal server error: {str(e)}"
+        ).model_dump()), 500
 
 
 if __name__ == '__main__':
