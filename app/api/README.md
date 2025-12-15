@@ -6,6 +6,14 @@ This directory contains two API files:
 - `app.py` - Scheduler API for planning and scheduling events
 - `calendar_api.py` - Calendar API for direct calendar operations
 
+## Interactive API Documentation
+
+Swagger/OpenAPI documentation is available when the APIs are running:
+- **Scheduler API**: http://localhost:5002/api-docs
+- **Calendar API**: http://localhost:5001/api-docs
+
+The Swagger UI provides interactive documentation with request/response schemas and the ability to test endpoints directly.
+
 ## Scheduler API Endpoints
 
 ### GET /health
