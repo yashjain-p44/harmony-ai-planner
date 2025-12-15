@@ -1,9 +1,0 @@
-{
-  "plan_description": "Reading books",
-  "total_minutes_per_week": 120,
-  "min_event_duration": 30,
-  "max_event_duration": 60,
-  "min_break": 15,
-  "scheduling_window_days": 7
-}
-
