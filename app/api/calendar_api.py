@@ -11,6 +11,7 @@ from datetime import datetime
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from googleapiclient.errors import HttpError
+from flasgger import Swagger
 
 # Add src directory to path to import modules
 src_path = os.path.join(os.path.dirname(__file__), '..', 'src')
@@ -22,6 +23,52 @@ from calendar_repository import GoogleCalendarRepository
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for frontend integration
+
+# Configure Swagger
+swagger_config = {
+    "headers": [],
+    "specs": [
+        {
+            "endpoint": "apispec",
+            "route": "/apispec.json",
+            "rule_filter": lambda rule: True,
+            "model_filter": lambda tag: True,
+        }
+    ],
+    "static_url_path": "/flasgger_static",
+    "swagger_ui": True,
+    "specs_route": "/api-docs"
+}
+
+swagger_template = {
+    "swagger": "2.0",
+    "info": {
+        "title": "Calendar API",
+        "description": "RESTful API for direct calendar operations using Google Calendar",
+        "version": "1.0.0",
+        "contact": {
+            "name": "API Support"
+        }
+    },
+    "basePath": "/",
+    "schemes": ["http", "https"],
+    "tags": [
+        {
+            "name": "Health",
+            "description": "Health check endpoints"
+        },
+        {
+            "name": "Calendars",
+            "description": "Calendar management endpoints"
+        },
+        {
+            "name": "Events",
+            "description": "Event management endpoints"
+        }
+    ]
+}
+
+swagger = Swagger(app, config=swagger_config, template=swagger_template)
 
 # Initialize calendar repository
 calendar_repo = GoogleCalendarRepository()
@@ -47,7 +94,26 @@ def parse_datetime(dt_str: str) -> datetime:
 
 @app.route('/calendar/health', methods=['GET'])
 def health_check():
-    """Health check endpoint."""
+    """
+    Health Check Endpoint
+    ---
+    tags:
+      - Health
+    summary: Check API health status
+    description: Returns the health status of the Calendar API service
+    responses:
+      200:
+        description: API is healthy
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              example: healthy
+            service:
+              type: string
+              example: calendar-api
+    """
     return jsonify({
         "status": "healthy",
         "service": "calendar-api"
@@ -57,10 +123,49 @@ def health_check():
 @app.route('/calendar/calendars', methods=['GET'])
 def list_calendars():
     """
-    List all calendars accessible by the user.
-    
-    Returns:
-        JSON response with list of calendars
+    List All Calendars
+    ---
+    tags:
+      - Calendars
+    summary: List all calendars accessible by the user
+    description: Retrieves a list of all calendars that the authenticated user has access to
+    responses:
+      200:
+        description: Successfully retrieved calendars
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            calendars:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    example: "primary"
+                  summary:
+                    type: string
+                    example: "My Calendar"
+                  description:
+                    type: string
+                    example: "My primary calendar"
+            count:
+              type: integer
+              example: 1
+      500:
+        description: Server error
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "Failed to list calendars: ..."
     """
     try:
         calendars = calendar_repo.list_calendars()
@@ -84,13 +189,50 @@ def list_calendars():
 @app.route('/calendar/calendars/<calendar_id>', methods=['GET'])
 def get_calendar(calendar_id: str):
     """
-    Get a specific calendar by ID.
-    
-    Args:
-        calendar_id: The ID of the calendar to retrieve
-    
-    Returns:
-        JSON response with calendar details
+    Get Calendar by ID
+    ---
+    tags:
+      - Calendars
+    summary: Get a specific calendar by ID
+    description: Retrieves detailed information about a specific calendar
+    parameters:
+      - name: calendar_id
+        in: path
+        type: string
+        required: true
+        description: The ID of the calendar to retrieve
+        example: "primary"
+    responses:
+      200:
+        description: Successfully retrieved calendar
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            calendar:
+              type: object
+              properties:
+                id:
+                  type: string
+                  example: "primary"
+                summary:
+                  type: string
+                  example: "My Calendar"
+      404:
+        description: Calendar not found
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "Failed to get calendar: ..."
+      500:
+        description: Server error
     """
     try:
         calendar = calendar_repo.get_calendar(calendar_id)
@@ -113,18 +255,79 @@ def get_calendar(calendar_id: str):
 @app.route('/calendar/events', methods=['GET'])
 def list_events():
     """
-    List events from a calendar.
-    
-    Query parameters:
-        calendar_id: Calendar identifier (default: "primary")
-        time_min: Lower bound for event start time (ISO format, optional)
-        time_max: Upper bound for event end time (ISO format, optional)
-        max_results: Maximum number of events (default: 10)
-        single_events: Whether to expand recurring events (default: true)
-        order_by: Order of events (default: "startTime")
-    
-    Returns:
-        JSON response with list of events
+    List Events
+    ---
+    tags:
+      - Events
+    summary: List events from a calendar
+    description: Retrieves a list of events from the specified calendar with optional filtering
+    parameters:
+      - name: calendar_id
+        in: query
+        type: string
+        required: false
+        default: "primary"
+        description: Calendar identifier
+      - name: time_min
+        in: query
+        type: string
+        required: false
+        description: Lower bound for event start time (ISO format)
+        example: "2024-01-01T00:00:00Z"
+      - name: time_max
+        in: query
+        type: string
+        required: false
+        description: Upper bound for event end time (ISO format)
+        example: "2024-12-31T23:59:59Z"
+      - name: max_results
+        in: query
+        type: integer
+        required: false
+        default: 10
+        description: Maximum number of events to return
+      - name: single_events
+        in: query
+        type: boolean
+        required: false
+        default: true
+        description: Whether to expand recurring events
+      - name: order_by
+        in: query
+        type: string
+        required: false
+        default: "startTime"
+        enum: ["startTime", "updated"]
+        description: Order of events
+    responses:
+      200:
+        description: Successfully retrieved events
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            events:
+              type: array
+              items:
+                type: object
+            count:
+              type: integer
+              example: 5
+      400:
+        description: Bad request - invalid parameters
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "Invalid parameter: ..."
+      500:
+        description: Server error
     """
     try:
         calendar_id = request.args.get('calendar_id', 'primary')
@@ -174,16 +377,56 @@ def list_events():
 @app.route('/calendar/events/<event_id>', methods=['GET'])
 def get_event(event_id: str):
     """
-    Get a specific event by ID.
-    
-    Query parameters:
-        calendar_id: Calendar identifier (default: "primary")
-    
-    Args:
-        event_id: The ID of the event to retrieve
-    
-    Returns:
-        JSON response with event details
+    Get Event by ID
+    ---
+    tags:
+      - Events
+    summary: Get a specific event by ID
+    description: Retrieves detailed information about a specific event
+    parameters:
+      - name: event_id
+        in: path
+        type: string
+        required: true
+        description: The ID of the event to retrieve
+        example: "abc123def456"
+      - name: calendar_id
+        in: query
+        type: string
+        required: false
+        default: "primary"
+        description: Calendar identifier
+    responses:
+      200:
+        description: Successfully retrieved event
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            event:
+              type: object
+              properties:
+                id:
+                  type: string
+                  example: "abc123def456"
+                summary:
+                  type: string
+                  example: "Team Meeting"
+      404:
+        description: Event not found
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "Failed to get event: ..."
+      500:
+        description: Server error
     """
     try:
         calendar_id = request.args.get('calendar_id', 'primary')
@@ -207,20 +450,90 @@ def get_event(event_id: str):
 @app.route('/calendar/events', methods=['POST'])
 def create_event():
     """
-    Create a new calendar event.
-    
-    Request body should be a JSON object with:
-    - summary: str (required) - Title of the event
-    - start_time: str (required) - Start time in ISO format
-    - end_time: str (optional) - End time in ISO format (defaults to 1 hour after start)
-    - description: str (optional) - Description of the event
-    - location: str (optional) - Location of the event
-    - attendees: list[str] (optional) - List of attendee email addresses
-    - calendar_id: str (optional) - Calendar ID (default: "primary")
-    - Additional event properties can be passed as extra fields
-    
-    Returns:
-        JSON response with created event
+    Create Event
+    ---
+    tags:
+      - Events
+    summary: Create a new calendar event
+    description: Creates a new event in the specified calendar
+    consumes:
+      - application/json
+    produces:
+      - application/json
+    parameters:
+      - in: body
+        name: body
+        description: Event creation payload
+        required: true
+        schema:
+          type: object
+          required:
+            - summary
+            - start_time
+          properties:
+            summary:
+              type: string
+              description: Title of the event
+              example: "Team Meeting"
+            start_time:
+              type: string
+              format: date-time
+              description: Start time in ISO format
+              example: "2024-01-15T14:00:00Z"
+            end_time:
+              type: string
+              format: date-time
+              description: End time in ISO format (defaults to 1 hour after start)
+              example: "2024-01-15T15:00:00Z"
+            description:
+              type: string
+              description: Description of the event
+              example: "Weekly team sync"
+            location:
+              type: string
+              description: Location of the event
+              example: "Conference Room A"
+            attendees:
+              type: array
+              items:
+                type: string
+              description: List of attendee email addresses
+              example: ["john@example.com", "jane@example.com"]
+            calendar_id:
+              type: string
+              description: Calendar ID (default: "primary")
+              example: "primary"
+    responses:
+      201:
+        description: Event created successfully
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            event:
+              type: object
+              properties:
+                id:
+                  type: string
+                  example: "abc123def456"
+                summary:
+                  type: string
+                  example: "Team Meeting"
+      400:
+        description: Bad request - validation error
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "summary is required"
+      500:
+        description: Server error
     """
     try:
         data = request.get_json()
@@ -290,22 +603,106 @@ def create_event():
 @app.route('/calendar/events/<event_id>', methods=['PUT', 'PATCH'])
 def update_event(event_id: str):
     """
-    Update an existing calendar event.
-    
-    Query parameters:
-        calendar_id: Calendar identifier (default: "primary")
-    
-    Request body should be a JSON object with any of:
-    - summary: str - New title of the event
-    - start_time: str - New start time in ISO format
-    - end_time: str - New end time in ISO format
-    - description: str - New description
-    - location: str - New location
-    - attendees: list[str] - New list of attendee email addresses
-    - Additional event properties can be passed as extra fields
-    
-    Returns:
-        JSON response with updated event
+    Update Event
+    ---
+    tags:
+      - Events
+    summary: Update an existing calendar event
+    description: Updates an existing event in the specified calendar. All fields are optional.
+    consumes:
+      - application/json
+    produces:
+      - application/json
+    parameters:
+      - name: event_id
+        in: path
+        type: string
+        required: true
+        description: The ID of the event to update
+        example: "abc123def456"
+      - name: calendar_id
+        in: query
+        type: string
+        required: false
+        default: "primary"
+        description: Calendar identifier
+      - in: body
+        name: body
+        description: Event update payload
+        required: true
+        schema:
+          type: object
+          properties:
+            summary:
+              type: string
+              description: New title of the event
+              example: "Updated Team Meeting"
+            start_time:
+              type: string
+              format: date-time
+              description: New start time in ISO format
+              example: "2024-01-15T15:00:00Z"
+            end_time:
+              type: string
+              format: date-time
+              description: New end time in ISO format
+              example: "2024-01-15T16:00:00Z"
+            description:
+              type: string
+              description: New description
+              example: "Updated weekly team sync"
+            location:
+              type: string
+              description: New location
+              example: "Conference Room B"
+            attendees:
+              type: array
+              items:
+                type: string
+              description: New list of attendee email addresses
+              example: ["john@example.com"]
+    responses:
+      200:
+        description: Event updated successfully
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            event:
+              type: object
+              properties:
+                id:
+                  type: string
+                  example: "abc123def456"
+                summary:
+                  type: string
+                  example: "Updated Team Meeting"
+      400:
+        description: Bad request - validation error
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "Invalid datetime format: ..."
+      404:
+        description: Event not found
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "Failed to update event: ..."
+      500:
+        description: Server error
     """
     try:
         data = request.get_json()
@@ -367,16 +764,50 @@ def update_event(event_id: str):
 @app.route('/calendar/events/<event_id>', methods=['DELETE'])
 def delete_event(event_id: str):
     """
-    Delete a calendar event.
-    
-    Query parameters:
-        calendar_id: Calendar identifier (default: "primary")
-    
-    Args:
-        event_id: The ID of the event to delete
-    
-    Returns:
-        JSON response confirming deletion
+    Delete Event
+    ---
+    tags:
+      - Events
+    summary: Delete a calendar event
+    description: Deletes an event from the specified calendar
+    parameters:
+      - name: event_id
+        in: path
+        type: string
+        required: true
+        description: The ID of the event to delete
+        example: "abc123def456"
+      - name: calendar_id
+        in: query
+        type: string
+        required: false
+        default: "primary"
+        description: Calendar identifier
+    responses:
+      200:
+        description: Event deleted successfully
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            message:
+              type: string
+              example: "Event abc123def456 deleted successfully"
+      404:
+        description: Event not found
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: false
+            error:
+              type: string
+              example: "Failed to delete event: ..."
+      500:
+        description: Server error
     """
     try:
         calendar_id = request.args.get('calendar_id', 'primary')
