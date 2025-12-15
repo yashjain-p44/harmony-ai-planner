@@ -40,7 +40,40 @@ The app will be available at `http://localhost:5173` and will automatically open
 
 ## Backend
 
-Backend API documentation coming soon...
+The backend consists of two Flask APIs located in `app/api`:
+
+- **Scheduler API** (`app.py`) - AI agent chat interface for planning and scheduling
+- **Calendar API** (`calendar_api.py`) - Direct calendar operations
+
+### Setup
+
+1. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. Set up environment variables (see AI Agent section)
+
+### Running the APIs
+
+**Scheduler API** (port 5002):
+```bash
+python3 app/api/app.py
+```
+
+**Calendar API** (port 5001):
+```bash
+python3 app/api/calendar_api.py
+```
+
+### API Documentation
+
+Interactive Swagger/OpenAPI documentation is available when the APIs are running:
+
+- **Scheduler API**: http://localhost:5002/api-docs
+- **Calendar API**: http://localhost:5001/api-docs
+
+For detailed endpoint documentation, see [app/api/README.md](app/api/README.md).
 
 ## AI Agent
 
