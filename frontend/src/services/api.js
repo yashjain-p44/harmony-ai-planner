@@ -10,16 +10,22 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5002';
 /**
  * Send a user prompt to the assistant
  * @param {string} prompt - User's message
- * @returns {Promise<string>} Assistant's response
+ * @param {Object|null} state - Previous agent state (for human-in-the-loop scenarios)
+ * @returns {Promise<Object>} Response object with response, needs_approval_from_human, and state
  */
-export const sendUserPrompt = async (prompt) => {
+export const sendUserPrompt = async (prompt, state = null) => {
   try {
+    const requestBody = { prompt };
+    if (state) {
+      requestBody.state = state;
+    }
+
     const response = await fetch(`${API_BASE_URL}/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
@@ -33,8 +39,13 @@ export const sendUserPrompt = async (prompt) => {
       throw new Error(data.error || 'Request failed');
     }
 
-    // Return the agent's response
-    return data.response || 'No response from agent';
+    // Return full response object including state and needs_approval_from_human flag
+    return {
+      response: data.response || 'No response from agent',
+      needs_approval_from_human: data.needs_approval_from_human || false,
+      state: data.state || null,
+      messages: data.messages || []
+    };
   } catch (error) {
     console.error('Error sending prompt to backend:', error);
     throw error;

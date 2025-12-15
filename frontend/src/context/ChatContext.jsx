@@ -14,6 +14,7 @@ export const useChat = () => {
 export const ChatProvider = ({ children }) => {
   const [messages, setMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [conversationState, setConversationState] = useState(null); // Store full conversation state
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -38,22 +39,57 @@ export const ChatProvider = ({ children }) => {
   const sendMessage = async (prompt) => {
     if (!prompt.trim() || isLoading) return;
 
-    // Add user message
+    // Add user message to UI
     addMessage('user', prompt);
 
     // Set loading state
     setIsLoading(true);
 
     try {
-      // Call API service
-      const response = await sendUserPrompt(prompt);
+      // Prepare state to send - merge new user message into existing state
+      let stateToSend = null;
       
-      // Add assistant response
-      addMessage('assistant', response);
+      if (conversationState) {
+        // Append new user message to existing state messages
+        stateToSend = {
+          ...conversationState,
+          messages: [
+            ...conversationState.messages,
+            {
+              type: "HumanMessage",
+              content: prompt
+            }
+          ]
+        };
+      } else {
+        // First message - create initial state with just the user message
+        stateToSend = {
+          messages: [
+            {
+              type: "HumanMessage",
+              content: prompt
+            }
+          ],
+          needs_approval_from_human: false
+        };
+      }
+
+      // Call API service - always send the complete state with all messages
+      const response = await sendUserPrompt(prompt, stateToSend);
+      
+      // Add assistant response to UI
+      addMessage('assistant', response.response);
+      
+      // Update conversation state with the complete state returned from backend
+      // Backend always returns state with all messages
+      if (response.state) {
+        setConversationState(response.state);
+      }
     } catch (error) {
       console.error('Error sending message:', error);
       const errorMessage = error.message || 'Sorry, I encountered an error. Please try again.';
       addMessage('assistant', `Error: ${errorMessage}`);
+      // Don't clear state on error - keep conversation history
     } finally {
       setIsLoading(false);
     }
@@ -61,6 +97,7 @@ export const ChatProvider = ({ children }) => {
 
   const clearMessages = () => {
     setMessages([]);
+    setConversationState(null); // Clear conversation state when clearing messages
   };
 
   const value = {
@@ -69,6 +106,8 @@ export const ChatProvider = ({ children }) => {
     sendMessage,
     clearMessages,
     messagesEndRef,
+    conversationState, // Expose conversation state for UI indication if needed
+    needsApproval: conversationState?.needs_approval_from_human || false,
   };
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
