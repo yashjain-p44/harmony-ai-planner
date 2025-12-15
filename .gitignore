@@ -50,6 +50,7 @@ Thumbs.db
 # Testing
 coverage
 .nyc_output
+app/**/test_*.py
 
 # Credentials and tokens
 credentials.json
