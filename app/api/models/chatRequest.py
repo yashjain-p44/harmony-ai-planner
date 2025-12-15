@@ -1,5 +1,6 @@
 """Request model for chat endpoint."""
 
+from typing import Optional, Dict, Any
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -11,6 +12,10 @@ class ChatRequest(BaseModel):
         min_length=1,
         max_length=10000,
         description="The user's message/prompt to send to the AI agent"
+    )
+    state: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Previous agent state to resume from (for human-in-the-loop scenarios)"
     )
     
     @field_validator('prompt')

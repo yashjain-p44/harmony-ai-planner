@@ -14,6 +14,14 @@ class ChatResponse(BaseModel):
         default_factory=list,
         description="Complete list of messages from the agent state (HumanMessage, AIMessage, ToolMessage, etc.)"
     )
+    needs_approval_from_human: bool = Field(
+        default=False,
+        description="Whether the agent needs human approval before continuing"
+    )
+    state: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Full agent state (returned when needs_approval_from_human is True)"
+    )
     error: Optional[str] = Field(
         default=None,
         description="Error message if success is False"
