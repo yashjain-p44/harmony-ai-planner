@@ -14,8 +14,8 @@ from dataclasses import dataclass
 class TimeWindow:
     """Represents a preferred time window for scheduling events."""
     start_hour: int  # 0-23
-    start_minute: int = 0  # 0-59
     end_hour: int  # 0-23
+    start_minute: int = 0  # 0-59
     end_minute: int = 0  # 0-59
 
 
