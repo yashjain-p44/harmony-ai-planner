@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, Send, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Sparkles, Send, X, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import type { Task, Category } from '../App';
+import { sendChatMessage, type AgentState, type ChatMessage as APIChatMessage } from '../services/api';
 
 interface AIPanelProps {
   isOpen: boolean;
@@ -21,11 +23,13 @@ export function AIPanel({ isOpen, onToggle, onAddTask }: AIPanelProps) {
     {
       id: '1',
       role: 'ai',
-      content: "Hi! I'm your AI scheduling assistant. You can tell me about tasks in natural language, like: 'Schedule a 2-hour meeting tomorrow at 2pm for work' or 'Add workout session, 1 hour, personal'",
+      content: "Hi! I'm your AI scheduling assistant. You can ask me to schedule meetings, create tasks, check your calendar, and more!",
     },
   ]);
   const [input, setInput] = useState('');
   const [pendingTask, setPendingTask] = useState<Partial<Task> | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [agentState, setAgentState] = useState<AgentState | null>(null);
 
   const parseTaskFromMessage = (message: string): Partial<Task> | null => {
     const categories: Record<string, Category> = {
@@ -78,8 +82,8 @@ export function AIPanel({ isOpen, onToggle, onAddTask }: AIPanelProps) {
     };
   };
 
-  const handleSendMessage = () => {
-    if (!input.trim()) return;
+  const handleSendMessage = async () => {
+    if (!input.trim() || isLoading) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -87,22 +91,67 @@ export function AIPanel({ isOpen, onToggle, onAddTask }: AIPanelProps) {
       content: input,
     };
 
-    setMessages([...messages, userMessage]);
+    setMessages((prev) => [...prev, userMessage]);
+    setInput('');
+    setIsLoading(true);
 
-    const parsedTask = parseTaskFromMessage(input);
-    setPendingTask(parsedTask);
+    try {
+      // Send message to backend AI agent
+      const response = await sendChatMessage({
+        prompt: input,
+        state: agentState || undefined,
+      });
 
-    setTimeout(() => {
-      const aiMessage: Message = {
+      if (response.success) {
+        // Update agent state for conversation continuity
+        if (response.state) {
+          setAgentState(response.state);
+        }
+
+        // Add AI response to messages
+        const aiMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'ai',
+          content: response.response,
+        };
+        setMessages((prev) => [...prev, aiMessage]);
+
+        // Try to parse task from the AI response if it mentions scheduling
+        if (response.response.toLowerCase().includes('schedule') || 
+            response.response.toLowerCase().includes('created') ||
+            response.response.toLowerCase().includes('added')) {
+          const parsedTask = parseTaskFromMessage(input);
+          if (parsedTask) {
+            setPendingTask(parsedTask);
+            const taskPreviewMessage: Message = {
+              id: (Date.now() + 2).toString(),
+              role: 'ai',
+              content: "Here's what I understood from your request:",
+              taskPreview: parsedTask,
+            };
+            setMessages((prev) => [...prev, taskPreviewMessage]);
+          }
+        }
+      } else {
+        // Handle error
+        const errorMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'ai',
+          content: `Sorry, I encountered an error: ${response.error || 'Unknown error'}. Please try again.`,
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
+      const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'ai',
-        content: `I've parsed your request! Here's what I understood:`,
-        taskPreview: parsedTask,
+        content: 'Sorry, I had trouble connecting to the server. Please make sure the backend is running and try again.',
       };
-      setMessages((prev) => [...prev, aiMessage]);
-    }, 500);
-
-    setInput('');
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleConfirmTask = (task: Partial<Task>) => {
@@ -209,7 +258,28 @@ export function AIPanel({ isOpen, onToggle, onAddTask }: AIPanelProps) {
                     : 'bg-white/90 border border-gray-200 text-gray-800'
                 }`}
               >
-                <div className="text-sm">{message.content}</div>
+                <div className={`text-sm prose prose-sm max-w-none ${
+                  message.role === 'user' ? 'prose-invert' : ''
+                }`}>
+                  <ReactMarkdown
+                    components={{
+                      h1: ({ node, ...props }) => <h1 className="text-lg font-bold mt-3 mb-2" {...props} />,
+                      h2: ({ node, ...props }) => <h2 className="text-base font-bold mt-2 mb-1" {...props} />,
+                      h3: ({ node, ...props }) => <h3 className="text-sm font-semibold mt-2 mb-1" {...props} />,
+                      p: ({ node, ...props }) => <p className="mb-2 last:mb-0" {...props} />,
+                      ul: ({ node, ...props }) => <ul className="list-disc ml-4 mb-2 space-y-1" {...props} />,
+                      ol: ({ node, ...props }) => <ol className="list-decimal ml-4 mb-2 space-y-1" {...props} />,
+                      li: ({ node, ...props }) => <li className="mb-1" {...props} />,
+                      strong: ({ node, ...props }) => <strong className="font-semibold" {...props} />,
+                      em: ({ node, ...props }) => <em className="italic" {...props} />,
+                      code: ({ node, ...props }) => (
+                        <code className="bg-gray-100 px-1 py-0.5 rounded text-xs" {...props} />
+                      ),
+                    }}
+                  >
+                    {message.content}
+                  </ReactMarkdown>
+                </div>
 
                 {/* Task Preview */}
                 {message.taskPreview && (
@@ -227,6 +297,17 @@ export function AIPanel({ isOpen, onToggle, onAddTask }: AIPanelProps) {
               </div>
             </motion.div>
           ))}
+          {isLoading && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex justify-start"
+            >
+              <div className="bg-white/90 border border-gray-200 rounded-2xl p-4 shadow-sm">
+                <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
+              </div>
+            </motion.div>
+          )}
         </div>
 
         {/* Input */}
@@ -242,13 +323,18 @@ export function AIPanel({ isOpen, onToggle, onAddTask }: AIPanelProps) {
             />
             <button
               onClick={handleSendMessage}
-              className="px-4 py-3 rounded-xl bg-gradient-to-r from-blue-400 to-purple-400 text-white shadow-md hover:shadow-lg hover:scale-105 transition-all"
+              disabled={isLoading || !input.trim()}
+              className="px-4 py-3 rounded-xl bg-gradient-to-r from-blue-400 to-purple-400 text-white shadow-md hover:shadow-lg hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
             >
-              <Send className="w-5 h-5" />
+              {isLoading ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <Send className="w-5 h-5" />
+              )}
             </button>
           </div>
           <div className="mt-3 text-xs text-gray-500">
-            Try: "Meeting tomorrow 2pm, 1 hour, work"
+            Try: "Schedule a meeting tomorrow at 2pm for 1 hour" or "What events do I have today?"
           </div>
         </div>
       </motion.div>
