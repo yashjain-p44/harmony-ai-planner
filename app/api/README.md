@@ -1,23 +1,26 @@
-# Scheduler API
+# Scheduler AI Agent API
 
-Flask REST API for the scheduler application.
+Unified Flask REST API for the scheduler application with AI agent chat and calendar operations.
 
-This directory contains two API files:
-- `app.py` - Scheduler API for planning and scheduling events
-- `calendar_api.py` - Calendar API for direct calendar operations
+This directory contains:
+- `app.py` - Unified API with AI chat interface and calendar operations
+- `models.py` - Pydantic models for request/response validation
 
 ## Interactive API Documentation
 
-Swagger/OpenAPI documentation is available when the APIs are running:
-- **Scheduler API**: http://localhost:5002/api-docs
-- **Calendar API**: http://localhost:5001/api-docs
+Swagger/OpenAPI documentation is available when the API is running:
+- **Unified API**: http://localhost:5002/api-docs
 
-The Swagger UI provides interactive documentation with request/response schemas and the ability to test endpoints directly.
+The Swagger UI provides interactive documentation with request/response schemas and the ability to test endpoints directly. All endpoints are organized by tags:
+- **Health** - Health check endpoints
+- **Chat** - AI agent chat endpoints  
+- **Calendars** - Calendar management endpoints
+- **Events** - Event management endpoints
 
-## Scheduler API Endpoints
+## Chat & AI Agent Endpoints
 
 ### GET /health
-Health check endpoint.
+Health check endpoint for the main API.
 
 **Response:**
 ```json
@@ -27,46 +30,39 @@ Health check endpoint.
 }
 ```
 
-### POST /schedule
-Schedule events based on plan requirements.
+### POST /chat
+Chat with the AI agent for natural language planning and scheduling.
 
 **Request Body:**
 ```json
 {
-  "plan_description": "Reading books",
-  "total_minutes_per_week": 120,
-  "min_event_duration": 30,
-  "max_event_duration": 60,
-  "min_break": 15,
-  "scheduling_window_days": 7,
-  "preferred_time_windows": [
-    {
-      "start_hour": 9,
-      "start_minute": 0,
-      "end_hour": 17,
-      "end_minute": 0
-    }
-  ],
-  "calendar_id": "primary"
+  "prompt": "Schedule a meeting with John tomorrow at 2pm",
+  "state": {
+    "messages": [...],
+    "needs_approval_from_human": false
+  }
 }
 ```
+
+The `state` field is optional and used for conversation continuity and human-in-the-loop scenarios.
 
 **Response:**
 ```json
 {
   "success": true,
-  "events_created": [...],
-  "event_ids": [...],
-  "total_minutes_scheduled": 120,
-  "remaining_minutes": 0,
-  "decision_log": [...],
-  "warnings": [],
-  "errors": []
+  "response": "I've scheduled a meeting with John tomorrow at 2pm.",
+  "prompt": "Schedule a meeting with John tomorrow at 2pm",
+  "messages": [...],
+  "needs_approval_from_human": false,
+  "state": {
+    "messages": [...],
+    "needs_approval_from_human": false
+  },
+  "error": null
 }
 ```
 
-### POST /schedule/preview
-Preview scheduling without creating calendar events (not yet implemented).
+When `needs_approval_from_human` is true, the agent is awaiting confirmation before executing actions. Return the state in the next request to continue the conversation.
 
 ## Calendar API Endpoints
 
@@ -184,28 +180,22 @@ Delete a calendar event.
 }
 ```
 
-## Running the APIs
+## Running the API
 
-### Scheduler API
+Start the unified API server:
+
 ```bash
 # From the app/api directory
 python app.py
 
 # Or from the project root
-cd app/api && python app.py
+python3 app/api/app.py
 ```
-The Scheduler API runs on `http://localhost:5000` by default.
 
-### Calendar API
-```bash
-# From the app/api directory
-python calendar_api.py
-
-# Or from the project root
-cd app/api && python calendar_api.py
-```
-The Calendar API runs on `http://localhost:5001` by default.
+The unified API runs on `http://localhost:5002` and exposes all endpoints:
+- Chat/AI endpoints: `/health`, `/chat`
+- Calendar endpoints: `/calendar/health`, `/calendar/calendars`, `/calendar/events`
 
 ## CORS
 
-CORS is enabled on both APIs to allow frontend integration.
+CORS is enabled on the API to allow frontend integration from any origin.
