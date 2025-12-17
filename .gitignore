@@ -58,13 +58,20 @@ token.json
 **/credentials.json
 **/token.json
 
-# Frontend
+# Frontend (Original)
 frontend/node_modules/
 frontend/dist/
 frontend/dist-ssr/
 frontend/.vite/
 frontend/*.local
 frontend/package-lock.json
+
+# Frontend (Figma)
+figma-frontend/node_modules/
+figma-frontend/build/
+figma-frontend/dist/
+figma-frontend/.vite/
+figma-frontend/*.local
 
 # Build outputs
 *.log
