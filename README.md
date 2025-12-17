@@ -1,15 +1,30 @@
 # task-ai-poc
 A POC for AI driven task manager scheduler
 
-## Frontend
+## Frontends
 
-The frontend is built with React and Vite. It's located in the `frontend` directory.
+This project has two frontend implementations:
+
+### 1. Original Frontend (`frontend/`)
+The initial prototype frontend with basic chat and planning interfaces.
+
+### 2. Figma Frontend (`figma-frontend/`)
+A complete, production-ready UI exported from Figma with:
+- Beautiful glassmorphism design
+- Multi-step onboarding flow
+- AI chat interface with natural language parsing
+- Calendar views (Day/Week/Month)
+- Advanced task management (List/Kanban views)
+- Google Calendar integration
+- Full accessibility support
+
+The Figma frontend is built with React and Vite. See [figma-frontend/README.md](figma-frontend/README.md) for detailed documentation.
 
 ### Prerequisites
-- Node.js (v16 or higher)
+- Node.js (v18 or higher)
 - npm (comes with Node.js)
 
-### Setup
+### Running the Original Frontend
 
 1. Navigate to the frontend directory:
    ```bash
@@ -21,16 +36,33 @@ The frontend is built with React and Vite. It's located in the `frontend` direct
    npm install
    ```
 
-### Running the Frontend
+3. Start the development server:
+   ```bash
+   npm run dev
+   ```
 
-Start the development server:
-```bash
-npm run dev
-```
+The app will be available at `http://localhost:5173`.
 
-The app will be available at `http://localhost:5173` and will automatically open in your browser.
+### Running the Figma Frontend
 
-### Stopping the Server
+1. Navigate to the figma-frontend directory:
+   ```bash
+   cd figma-frontend
+   ```
+
+2. Install dependencies (already done if following setup):
+   ```bash
+   npm install
+   ```
+
+3. Start the development server:
+   ```bash
+   npm run dev
+   ```
+
+The app will be available at `http://localhost:5173` (or next available port if 5173 is in use).
+
+### Stopping the Servers
 
 - If running in a terminal: Press `Ctrl+C`
 - If running in the background: 
