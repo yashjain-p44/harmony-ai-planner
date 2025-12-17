@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Calendar, Plus, Target, ChevronLeft, ChevronRight, Sparkles, Settings, List } from 'lucide-react';
+import { Calendar, Plus, Target, ChevronLeft, ChevronRight, Sparkles, Settings, List, RefreshCw, AlertCircle } from 'lucide-react';
 import type { Task, UserPreferences, Category } from '../App';
 import { AIPanel } from './AIPanel';
 import { TaskForm } from './TaskForm';
@@ -20,6 +20,9 @@ interface DashboardProps {
   isCalendarConnected?: boolean;
   showTaskForm: boolean;
   onToggleTaskForm: () => void;
+  onRefreshCalendar?: () => void;
+  isLoadingCalendar?: boolean;
+  apiHealthy?: boolean;
 }
 
 export type ViewMode = 'day' | 'week' | 'month';
@@ -35,6 +38,9 @@ export function Dashboard({
   isCalendarConnected = false,
   showTaskForm,
   onToggleTaskForm,
+  onRefreshCalendar,
+  isLoadingCalendar = false,
+  apiHealthy = false,
 }: DashboardProps) {
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('week');
@@ -148,6 +154,12 @@ export function Dashboard({
 
           {/* Right: Actions */}
           <div className="flex items-center gap-3">
+            {!apiHealthy && (
+              <div className="px-3 py-2 rounded-lg bg-orange-100 border border-orange-300 flex items-center gap-2 text-orange-800 text-sm">
+                <AlertCircle className="w-4 h-4" />
+                API Offline
+              </div>
+            )}
             <button
               onClick={onNavigateToTasks}
               className="px-4 py-2 rounded-lg bg-white/80 border border-gray-200 hover:border-purple-300 transition-all flex items-center gap-2 text-gray-700"
@@ -155,6 +167,17 @@ export function Dashboard({
               <List className="w-4 h-4" />
               Tasks
             </button>
+            {isCalendarConnected && onRefreshCalendar && (
+              <button
+                onClick={onRefreshCalendar}
+                disabled={isLoadingCalendar}
+                className="px-4 py-2 rounded-lg bg-white/80 border border-gray-200 hover:border-blue-300 transition-all flex items-center gap-2 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label="Refresh calendar"
+              >
+                <RefreshCw className={`w-4 h-4 ${isLoadingCalendar ? 'animate-spin' : ''}`} />
+                Refresh
+              </button>
+            )}
             {isCalendarConnected && (
               <button
                 onClick={() => setShowCalendarSettings(true)}
