@@ -72,6 +72,7 @@ figma-frontend/build/
 figma-frontend/dist/
 figma-frontend/.vite/
 figma-frontend/*.local
+figma-frontend/package-lock.json
 
 # Build outputs
 *.log
