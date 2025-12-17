@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { OnboardingFlow } from './components/OnboardingFlow';
 import { Dashboard } from './components/Dashboard';
 import { MonthlyGoals } from './components/MonthlyGoals';
 import { GoogleCalendarFlow } from './components/GoogleCalendarFlow';
 import { TaskManagement } from './components/TaskManagement';
+import { fetchCalendarEvents, checkAPIHealth, type CalendarEvent } from './services/api';
 
 export type Category = 'work' | 'personal' | 'focus';
 
@@ -31,12 +32,35 @@ export interface UserPreferences {
   calendarConnected: boolean;
 }
 
+// Helper function to convert calendar event to task
+function convertCalendarEventToTask(event: CalendarEvent): Task {
+  const startTime = event.start.dateTime ? new Date(event.start.dateTime) : new Date(event.start.date!);
+  const endTime = event.end.dateTime ? new Date(event.end.dateTime) : new Date(event.end.date!);
+  const duration = (endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60); // Convert to hours
+
+  return {
+    id: event.id,
+    title: event.summary,
+    category: 'work', // Default category for Google Calendar events
+    duration: duration,
+    scheduledStart: startTime,
+    scheduledEnd: endTime,
+    notes: event.description,
+    constraints: {
+      location: event.location,
+    },
+    isFromGoogleCalendar: true,
+  };
+}
+
 export default function App() {
   const [currentFlow, setCurrentFlow] = useState<'onboarding' | 'dashboard' | 'goals' | 'google-calendar' | 'task-management'>('onboarding');
   const [preferences, setPreferences] = useState<UserPreferences | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isCalendarConnected, setIsCalendarConnected] = useState(false);
   const [showTaskForm, setShowTaskForm] = useState(false);
+  const [isLoadingCalendar, setIsLoadingCalendar] = useState(false);
+  const [apiHealthy, setApiHealthy] = useState(false);
 
   const handleOnboardingComplete = (prefs: UserPreferences) => {
     setPreferences(prefs);
@@ -50,7 +74,67 @@ export default function App() {
   const handleGoogleCalendarComplete = () => {
     setIsCalendarConnected(true);
     setCurrentFlow('dashboard');
+    // Fetch calendar events after connection
+    loadCalendarEvents();
   };
+
+  // Check API health on mount
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const health = await checkAPIHealth();
+        setApiHealthy(health.status === 'ok' || health.status === 'healthy');
+      } catch (error) {
+        console.error('API health check failed:', error);
+        setApiHealthy(false);
+      }
+    };
+    checkHealth();
+  }, []);
+
+  // Load calendar events
+  const loadCalendarEvents = async () => {
+    if (!isCalendarConnected) return;
+
+    setIsLoadingCalendar(true);
+    try {
+      // Fetch events for the next 30 days
+      const now = new Date();
+      const thirtyDaysLater = new Date(now);
+      thirtyDaysLater.setDate(thirtyDaysLater.getDate() + 30);
+
+      const response = await fetchCalendarEvents({
+        calendar_id: 'primary',
+        time_min: now.toISOString(),
+        time_max: thirtyDaysLater.toISOString(),
+        max_results: 100,
+        single_events: true,
+        order_by: 'startTime',
+      });
+
+      if (response.success && response.events) {
+        // Convert calendar events to tasks and merge with existing tasks
+        const calendarTasks = response.events.map(convertCalendarEventToTask);
+        
+        // Remove old calendar tasks and add new ones
+        setTasks(prevTasks => [
+          ...prevTasks.filter(t => !t.isFromGoogleCalendar),
+          ...calendarTasks,
+        ]);
+      }
+    } catch (error) {
+      console.error('Error loading calendar events:', error);
+    } finally {
+      setIsLoadingCalendar(false);
+    }
+  };
+
+  // Load calendar events when calendar is connected
+  useEffect(() => {
+    if (isCalendarConnected && currentFlow === 'dashboard') {
+      loadCalendarEvents();
+    }
+  }, [isCalendarConnected, currentFlow]);
 
   const handleAddTask = (task: Task) => {
     setTasks([...tasks, task]);
@@ -108,6 +192,9 @@ export default function App() {
             isCalendarConnected={isCalendarConnected}
             showTaskForm={showTaskForm}
             onToggleTaskForm={() => setShowTaskForm(!showTaskForm)}
+            onRefreshCalendar={loadCalendarEvents}
+            isLoadingCalendar={isLoadingCalendar}
+            apiHealthy={apiHealthy}
           />
         )}
         {currentFlow === 'goals' && (
