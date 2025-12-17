@@ -154,18 +154,50 @@ This application includes:
 
 ## 🔌 API Integration
 
-Currently, the frontend is standalone with mock data. To connect to your backend:
+✅ **The frontend is now fully integrated with the backend!**
 
-1. **Update API endpoints** in the component files
-2. **Add authentication** handling (if needed)
-3. **Configure environment variables** for API URLs
-4. **Implement real calendar API** integration
+### Features Integrated
 
-Example integration points:
-- `onAddTask` - POST to `/api/tasks`
-- `onUpdateTask` - PUT to `/api/tasks/:id`
-- `onDeleteTask` - DELETE to `/api/tasks/:id`
-- Calendar OAuth - Use Google Calendar API
+1. **AI Chatbot** - Chat with the AI agent for task scheduling and calendar management
+2. **Google Calendar Sync** - Automatically fetch and display calendar events
+3. **Real-time Updates** - Refresh calendar events with a button click
+4. **Health Monitoring** - Visual indicator when backend API is offline
+
+### Setup
+
+1. **Configure Backend URL**:
+   ```bash
+   # The .env file is already created with default settings
+   # Edit if your backend runs on a different port
+   VITE_API_BASE_URL=http://localhost:5000
+   ```
+
+2. **Start Backend** (in another terminal):
+   ```bash
+   cd /Users/yashjainp44/task-ai-poc
+   python app/api/app.py
+   ```
+
+3. **Start Frontend**:
+   ```bash
+   npm run dev
+   ```
+
+### API Endpoints Used
+
+- `POST /chat` - AI agent conversations
+- `GET /calendar/events` - Fetch Google Calendar events
+- `POST /calendar/events` - Create calendar events
+- `GET /health` - API health check
+
+### Detailed Integration Guide
+
+See [INTEGRATION_GUIDE.md](./INTEGRATION_GUIDE.md) for comprehensive documentation on:
+- Architecture overview
+- Setup instructions
+- Troubleshooting
+- API service layer details
+- Testing procedures
 
 ## 🧪 Development
 
