@@ -72,10 +72,11 @@ The app will be available at `http://localhost:5173` (or next available port if 
 
 ## Backend
 
-The backend consists of two Flask APIs located in `app/api`:
+The backend is a unified Flask API located in `app/api/app.py` that provides:
 
-- **Scheduler API** (`app.py`) - AI agent chat interface for planning and scheduling
-- **Calendar API** (`calendar_api.py`) - Direct calendar operations
+- **AI Agent Chat Interface** - Natural language planning and scheduling with LangGraph
+- **Calendar Operations** - Direct CRUD operations for calendars and events
+- **Health Check Endpoints** - Monitoring for both services
 
 ### Setup
 
@@ -86,24 +87,28 @@ The backend consists of two Flask APIs located in `app/api`:
 
 2. Set up environment variables (see AI Agent section)
 
-### Running the APIs
+### Running the API
 
-**Scheduler API** (port 5002):
+Start the unified API server (port 5002):
 ```bash
 python3 app/api/app.py
 ```
 
-**Calendar API** (port 5001):
-```bash
-python3 app/api/calendar_api.py
-```
+This single command starts the server with all endpoints available:
+- Chat/AI endpoints at `/health` and `/chat`
+- Calendar endpoints at `/calendar/*`
 
 ### API Documentation
 
-Interactive Swagger/OpenAPI documentation is available when the APIs are running:
+Interactive Swagger/OpenAPI documentation is available when the API is running:
 
-- **Scheduler API**: http://localhost:5002/api-docs
-- **Calendar API**: http://localhost:5001/api-docs
+- **Unified API Docs**: http://localhost:5002/api-docs
+
+The documentation includes all endpoints organized by tags:
+- Health - Health check endpoints
+- Chat - AI agent chat endpoints
+- Calendars - Calendar management endpoints
+- Events - Event management endpoints
 
 For detailed endpoint documentation, see [app/api/README.md](app/api/README.md).
 
