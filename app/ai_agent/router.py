@@ -30,3 +30,12 @@ def should_continue(state: AgentState) -> str:
         return "tools"
     
     return "end"
+
+def route_by_intent(state: AgentState) -> str:
+    return state["intent_type"]
+
+def route_by_plan_status(state: AgentState) -> str:
+    return state["plan_status"]
+
+def route_by_execution_decision(state: AgentState) -> str:
+    return state["execution_decision"]
