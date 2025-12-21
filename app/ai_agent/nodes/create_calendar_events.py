@@ -1,0 +1,78 @@
+"""Create calendar events node - creates events in calendar provider."""
+
+import json
+from typing import List, Dict
+
+from app.ai_agent.state import AgentState
+from app.ai_agent.tools import create_calendar_event_tool
+
+
+def create_calendar_events(state: AgentState) -> AgentState:
+    """
+    Create calendar events from selected slots.
+    
+    Reads: selected_slots
+    Writes: created_events
+    """
+    print("[create_calendar_events] Starting to create calendar events...")
+    selected_slots = state.get("selected_slots", [])
+    habit_definition = state.get("habit_definition", {})
+    
+    habit_name = habit_definition.get("habit_name", "Scheduled Habit")
+    description = habit_definition.get("description", "")
+    
+    print(f"[create_calendar_events] Creating events for habit: {habit_name}")
+    print(f"[create_calendar_events] Number of slots to create events for: {len(selected_slots)}")
+    
+    created_events: List[Dict] = []
+    
+    for i, slot in enumerate(selected_slots):
+        print(f"[create_calendar_events] Processing slot {i+1}/{len(selected_slots)}: {slot.get('start')} to {slot.get('end')}")
+        start_time = slot.get("start")
+        end_time = slot.get("end")
+        
+        if not start_time:
+            continue  # Skip invalid slots
+        
+        try:
+            # Use the calendar tool to create the event
+            result_json = create_calendar_event_tool.invoke({
+                "summary": habit_name,
+                "start_time": start_time,
+                "end_time": end_time,
+                "description": description,
+                "calendar_id": "primary"
+            })
+            
+            # Parse the JSON response
+            result = json.loads(result_json)
+            
+            if result.get("success", False):
+                event_data = result.get("event", {})
+                created_event = {
+                    "id": event_data.get("id"),
+                    "summary": event_data.get("summary", habit_name),
+                    "description": event_data.get("description", description),
+                    "start": event_data.get("start"),
+                    "end": event_data.get("end"),
+                    "location": event_data.get("location", ""),
+                    "htmlLink": event_data.get("htmlLink", ""),
+                    "status": "confirmed"
+                }
+                created_events.append(created_event)
+                print(f"[create_calendar_events] Successfully created event: {event_data.get('id')}")
+            else:
+                # Tool returned an error, log it but continue with other slots
+                error_msg = result.get("error", "Unknown error")
+                print(f"[create_calendar_events] Failed to create event: {error_msg}")
+                # In production, you might want to log this error
+                continue
+                
+        except Exception as e:
+            # If tool invocation fails, skip this slot and continue
+            print(f"[create_calendar_events] Exception while creating event: {str(e)}")
+            # In production, you might want to log this error
+            continue
+    
+    print(f"[create_calendar_events] Successfully created {len(created_events)} out of {len(selected_slots)} events")
+    return {"created_events": created_events}
