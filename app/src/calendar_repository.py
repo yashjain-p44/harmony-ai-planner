@@ -2,17 +2,19 @@
 Google Calendar API Repository
 
 This module provides a repository class for interacting with the Google Calendar API.
-It handles authentication and provides methods to get and set calendar information.
+It uses GoogleAuthProvider for authentication and provides methods to get and set calendar information.
 """
 
 import datetime
-import os
 from typing import List, Dict, Optional, Any
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+
+# Handle both relative and absolute imports
+try:
+    from .google_auth_provider import GoogleAuthProvider
+except ImportError:
+    from google_auth_provider import GoogleAuthProvider
 
 
 class GoogleCalendarRepository:
@@ -28,10 +30,11 @@ class GoogleCalendarRepository:
     """
     
     # Scopes for read and write access to calendar
-    SCOPES = ["https://www.googleapis.com/auth/calendar"]
+    CALENDAR_SCOPES = ["https://www.googleapis.com/auth/calendar"]
     
     def __init__(
         self,
+        auth_provider: Optional[GoogleAuthProvider] = None,
         credentials_file: Optional[str] = None,
         token_file: Optional[str] = None
     ):
@@ -39,59 +42,29 @@ class GoogleCalendarRepository:
         Initialize the Google Calendar Repository.
         
         Args:
+            auth_provider: Optional GoogleAuthProvider instance. If provided, will use
+                         this provider for authentication. If None, creates a new provider
+                         with calendar scopes.
             credentials_file: Path to the OAuth2 credentials JSON file.
+                            Only used if auth_provider is None.
                             If None, uses default path: app/creds/credentials.json
             token_file: Path to store/load the token JSON file.
+                       Only used if auth_provider is None.
                        If None, uses default path: app/src/token.json
         """
-        # Get the directory where this script is located
-        script_dir = os.path.dirname(os.path.abspath(__file__))
+        # Use provided auth provider or create a new one
+        if auth_provider is None:
+            self.auth_provider = GoogleAuthProvider(
+                scopes=self.CALENDAR_SCOPES,
+                credentials_file=credentials_file,
+                token_file=token_file
+            )
+        else:
+            self.auth_provider = auth_provider
         
-        # Set default paths if not provided
-        if credentials_file is None:
-            credentials_file = os.path.join(script_dir, "..", "creds", "credentials.json")
-        if token_file is None:
-            token_file = os.path.join(script_dir, "token.json")
-        
-        self.credentials_file = credentials_file
-        self.token_file = token_file
-        self.service = None
-        self._authenticate()
-    
-    def _authenticate(self) -> None:
-        """
-        Authenticate with Google Calendar API and build the service.
-        Handles OAuth2 flow and token refresh.
-        """
-        creds = None
-        
-        # Load existing token if available
-        if os.path.exists(self.token_file):
-            creds = Credentials.from_authorized_user_file(self.token_file, self.SCOPES)
-        
-        # If there are no (valid) credentials available, authenticate
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                # Refresh expired token
-                creds.refresh(Request())
-            else:
-                # Run OAuth flow
-                if not os.path.exists(self.credentials_file):
-                    raise FileNotFoundError(
-                        f"Credentials file not found: {self.credentials_file}\n"
-                        "Please download your OAuth2 credentials from Google Cloud Console."
-                    )
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    self.credentials_file, self.SCOPES
-                )
-                creds = flow.run_local_server(port=0)
-            
-            # Save credentials for next run
-            with open(self.token_file, "w") as token:
-                token.write(creds.to_json())
-        
-        # Build the service
-        self.service = build("calendar", "v3", credentials=creds)
+        # Build the service using credentials from auth provider
+        credentials = self.auth_provider.get_credentials()
+        self.service = build("calendar", "v3", credentials=credentials)
     
     def list_events(
         self,
