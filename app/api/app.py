@@ -167,8 +167,13 @@ swagger_template = {
 
 swagger = Swagger(app, config=swagger_config, template=swagger_template)
 
-# Initialize calendar repository
-calendar_repo = GoogleCalendarRepository()
+# Initialize calendar repository (handle auth errors gracefully)
+try:
+    calendar_repo = GoogleCalendarRepository()
+except Exception as e:
+    print(f"Warning: Could not initialize calendar repository: {e}")
+    print("Calendar endpoints will not be available. Chat endpoints should still work.")
+    calendar_repo = None
 
 
 def parse_datetime(dt_str: str) -> datetime:
@@ -429,6 +434,10 @@ def chat():
                 "messages": messages,
                 "needs_approval_from_human": chat_request.state.get("needs_approval_from_human", False)
             }
+            # Merge any existing state fields
+            for key, value in chat_request.state.items():
+                if key not in ["messages", "needs_approval_from_human"]:
+                    initial_state[key] = value
         else:
             # New conversation
             initial_state = {
@@ -436,10 +445,19 @@ def chat():
                 "needs_approval_from_human": False
             }
         
+        # Merge approval fields from request into state (if provided)
+        if chat_request.approval_state is not None:
+            initial_state["approval_state"] = chat_request.approval_state
+        if chat_request.approval_feedback is not None:
+            initial_state["approval_feedback"] = chat_request.approval_feedback
+        
         result = app.invoke(initial_state)
         
-        # Check if human approval is needed
-        needs_approval = result.get("needs_approval_from_human", False)
+        # Check approval state
+        approval_state = result.get("approval_state")
+        approval_summary = result.get("explanation_payload") if approval_state == "PENDING" else None
+        needs_approval = result.get("needs_approval_from_human", False) or approval_state == "PENDING"
+        
         if needs_approval:
             # Format state for response
             formatted_messages = []
@@ -471,6 +489,11 @@ def chat():
                 "messages": formatted_messages,
                 "needs_approval_from_human": result.get("needs_approval_from_human", False)
             }
+            # Include approval state in state dict
+            if approval_state:
+                state_dict["approval_state"] = approval_state
+            if approval_feedback := result.get("approval_feedback"):
+                state_dict["approval_feedback"] = approval_feedback
             
             # Extract the last response for display
             agent_response = ""
@@ -479,6 +502,24 @@ def chat():
                 if isinstance(last_message, AIMessage):
                     agent_response = last_message.content or ""
             
+            # If no response from messages, generate one based on approval state
+            if not agent_response:
+                if approval_state == "PENDING":
+                    agent_response = "I've found some time slots for your schedule. Please review and approve below."
+                elif approval_state == "APPROVED":
+                    agent_response = "Great! I'm creating the calendar events now."
+                elif approval_state == "REJECTED":
+                    agent_response = "I understand. The scheduling has been cancelled."
+                elif approval_state == "CHANGES_REQUESTED":
+                    agent_response = "I'll adjust the schedule based on your feedback."
+                else:
+                    # Try to get response from explanation_payload if available
+                    explanation = result.get("explanation_payload", {})
+                    if isinstance(explanation, dict):
+                        agent_response = explanation.get("message") or explanation.get("summary") or "Request processed."
+                    else:
+                        agent_response = "Request processed."
+            
             # Return early with state
             chat_response = ChatResponse(
                 success=True,
@@ -486,6 +527,8 @@ def chat():
                 prompt=chat_request.prompt,
                 messages=formatted_messages,
                 needs_approval_from_human=True,
+                approval_state=approval_state,
+                approval_summary=approval_summary,
                 state=state_dict
             )
             
@@ -497,6 +540,25 @@ def chat():
             last_message = result["messages"][-1]
             if isinstance(last_message, AIMessage):
                 agent_response = last_message.content or ""
+        
+        # If no response from messages, generate one based on state
+        if not agent_response:
+            approval_state = result.get("approval_state")
+            if approval_state == "PENDING":
+                agent_response = "I've found some time slots for your schedule. Please review and approve below."
+            elif approval_state == "APPROVED":
+                agent_response = "Great! I'm creating the calendar events now."
+            elif approval_state == "REJECTED":
+                agent_response = "I understand. The scheduling has been cancelled."
+            elif approval_state == "CHANGES_REQUESTED":
+                agent_response = "I'll adjust the schedule based on your feedback."
+            else:
+                # Try to get response from explanation_payload if available
+                explanation = result.get("explanation_payload", {})
+                if isinstance(explanation, dict):
+                    agent_response = explanation.get("message") or explanation.get("summary") or "Request processed."
+                else:
+                    agent_response = "Request processed."
         
         # Format messages for response
         formatted_messages = []
@@ -528,6 +590,11 @@ def chat():
             "messages": formatted_messages,
             "needs_approval_from_human": result.get("needs_approval_from_human", False)
         }
+        # Include approval state in state dict if present
+        if approval_state:
+            state_dict["approval_state"] = approval_state
+        if approval_feedback := result.get("approval_feedback"):
+            state_dict["approval_feedback"] = approval_feedback
         
         # Create and return response using Pydantic model
         chat_response = ChatResponse(
@@ -536,6 +603,8 @@ def chat():
             prompt=chat_request.prompt,
             messages=formatted_messages,
             needs_approval_from_human=result.get("needs_approval_from_human", False),
+            approval_state=approval_state,
+            approval_summary=approval_summary,
             state=state_dict  # Always return state so frontend can maintain full conversation
         )
         
@@ -632,6 +701,11 @@ def list_calendars():
               type: string
               example: "Failed to list calendars: ..."
     """
+    if calendar_repo is None:
+        return jsonify({
+            "success": False,
+            "error": "Calendar repository not initialized. Please check Google Calendar authentication."
+        }), 503
     try:
         calendars = calendar_repo.list_calendars()
         return jsonify({
@@ -699,6 +773,11 @@ def get_calendar(calendar_id: str):
       500:
         description: Server error
     """
+    if calendar_repo is None:
+        return jsonify({
+            "success": False,
+            "error": "Calendar repository not initialized. Please check Google Calendar authentication."
+        }), 503
     try:
         calendar = calendar_repo.get_calendar(calendar_id)
         return jsonify({
