@@ -78,3 +78,42 @@ figma-frontend/package-lock.json
 # Build outputs
 *.log
 *.lock
+
+# Python cache and compiled files
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# Environment and secrets
+.env.local
+.env.*.local
+secrets.json
+*.pem
+*.key
+
+# IDE and editor files
+*.sublime-project
+*.sublime-workspace
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Project specific
+agent_graph.png
+*.backup
+* copy.*
