@@ -54,7 +54,7 @@ The backend should start on `http://localhost:5000`
 
 ```bash
 # Navigate to frontend directory
-cd figma-frontend
+cd frontend
 
 # Install dependencies (if not already done)
 npm install

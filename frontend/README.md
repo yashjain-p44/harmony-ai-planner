@@ -1,4 +1,4 @@
-# AI Scheduling Assistant - Figma Frontend
+# AI Scheduling Assistant - Frontend
 
 A beautiful, modern React frontend for the AI Scheduling Assistant application, designed in Figma and exported as production-ready code.
 
@@ -55,7 +55,7 @@ The optimized production files will be in the `dist/` directory.
 ## 📦 Project Structure
 
 ```
-figma-frontend/
+frontend/
 ├── src/
 │   ├── components/
 │   │   ├── Dashboard.tsx         # Main dashboard view

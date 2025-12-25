@@ -46,7 +46,7 @@ This project combines a sophisticated LangGraph-based AI agent with a modern Rea
 
 ```
 ┌─────────────────┐
-│  React Frontend │  (figma-frontend/)
+│  React Frontend │  (frontend/)
 │  (TypeScript)   │
 └────────┬────────┘
          │ HTTP/REST
@@ -102,7 +102,7 @@ task-ai-poc/
 │   │   ├── tasks_repository.py
 │   │   └── google_auth_provider.py
 │   └── creds/             # Credentials (gitignored)
-├── figma-frontend/        # React frontend
+├── frontend/              # React frontend
 │   ├── src/
 │   │   ├── components/    # React components
 │   │   ├── services/      # API client
@@ -159,7 +159,7 @@ task-ai-poc/
 
 5. **Set up frontend:**
    ```bash
-   cd figma-frontend
+   cd frontend
    npm install
    ```
 
@@ -175,7 +175,7 @@ task-ai-poc/
 
 2. **Start the frontend (in a new terminal):**
    ```bash
-   cd figma-frontend
+   cd frontend
    npm run dev
    ```
    The frontend will be available at `http://localhost:5173`
@@ -207,7 +207,7 @@ Use the Swagger UI at `http://localhost:5002/api-docs` to test endpoints interac
 ### Frontend Testing
 
 ```bash
-cd figma-frontend
+cd frontend
 npm test  # If test suite is configured
 ```
 
@@ -225,8 +225,8 @@ npm test  # If test suite is configured
 
 ### Frontend Documentation
 
-- **Frontend README**: [figma-frontend/README.md](figma-frontend/README.md)
-- **Integration Guide**: [figma-frontend/INTEGRATION_GUIDE.md](figma-frontend/INTEGRATION_GUIDE.md)
+- **Frontend README**: [frontend/README.md](frontend/README.md)
+- **Integration Guide**: [frontend/INTEGRATION_GUIDE.md](frontend/INTEGRATION_GUIDE.md)
 
 ### Authentication
 
@@ -254,7 +254,7 @@ API_HOST=0.0.0.0
 
 ### Frontend Configuration
 
-Edit `figma-frontend/.env` (or create it):
+Edit `frontend/.env` (or create it):
 
 ```env
 VITE_API_BASE_URL=http://localhost:5002
@@ -272,7 +272,7 @@ VITE_API_BASE_URL=http://localhost:5002
 
 1. **New AI Agent Node**: Add to `app/ai_agent/nodes/` and register in `graph.py`
 2. **New API Endpoint**: Add route in `app/api/app.py` with Swagger documentation
-3. **New Frontend Component**: Add to `figma-frontend/src/components/`
+3. **New Frontend Component**: Add to `frontend/src/components/`
 
 ### Debugging
 
@@ -298,7 +298,7 @@ See [requirements.txt](requirements.txt) for complete list.
 - **Tailwind CSS**: Styling
 - **Framer Motion**: Animations
 
-See [figma-frontend/package.json](figma-frontend/package.json) for complete list.
+See [frontend/package.json](frontend/package.json) for complete list.
 
 ## 🤝 Contributing
 
