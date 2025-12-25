@@ -67,6 +67,24 @@ export interface CalendarEvent {
   };
 }
 
+export interface GoogleTask {
+  id: string;
+  title: string;
+  notes?: string;
+  status?: 'needsAction' | 'completed';
+  due?: string;
+  updated?: string;
+  position?: string;
+  [key: string]: any;
+}
+
+export interface TaskList {
+  id: string;
+  title: string;
+  updated?: string;
+  [key: string]: any;
+}
+
 /**
  * Check if the API is healthy
  */
@@ -231,5 +249,194 @@ export async function sendChatMessageStream(
   }
 
   return finalResponse;
+}
+
+/**
+ * Fetch task lists from Google Tasks
+ */
+export async function fetchTaskLists(): Promise<{ success: boolean; task_lists?: TaskList[]; error?: string }> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/tasks/lists`, {
+      method: 'GET',
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return {
+      success: data.success || false,
+      task_lists: data.task_lists || [],
+    };
+  } catch (error) {
+    console.error('Error fetching task lists:', error);
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+}
+
+/**
+ * Fetch tasks from a specific task list
+ */
+export async function fetchTasks(
+  taskListId: string = '@default',
+  options?: {
+    show_completed?: boolean;
+    show_deleted?: boolean;
+    max_results?: number;
+  }
+): Promise<{ success: boolean; tasks?: GoogleTask[]; error?: string }> {
+  try {
+    const queryParams = new URLSearchParams();
+    if (options?.show_completed !== undefined) {
+      queryParams.append('show_completed', options.show_completed.toString());
+    }
+    if (options?.show_deleted !== undefined) {
+      queryParams.append('show_deleted', options.show_deleted.toString());
+    }
+    if (options?.max_results !== undefined) {
+      queryParams.append('max_results', options.max_results.toString());
+    }
+
+    const response = await fetch(
+      `${API_BASE_URL}/tasks/lists/${taskListId}/tasks?${queryParams.toString()}`,
+      {
+        method: 'GET',
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return {
+      success: data.success || false,
+      tasks: data.tasks || [],
+    };
+  } catch (error) {
+    console.error('Error fetching tasks:', error);
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+}
+
+/**
+ * Create a new task
+ */
+export async function createTask(
+  taskListId: string = '@default',
+  task: {
+    title: string;
+    notes?: string;
+    due?: string;
+    [key: string]: any;
+  }
+): Promise<{ success: boolean; task?: GoogleTask; error?: string }> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/tasks/lists/${taskListId}/tasks`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(task),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return {
+      success: data.success || false,
+      task: data.task,
+    };
+  } catch (error) {
+    console.error('Error creating task:', error);
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+}
+
+/**
+ * Update an existing task
+ */
+export async function updateTask(
+  taskListId: string,
+  taskId: string,
+  updates: {
+    title?: string;
+    notes?: string;
+    due?: string;
+    status?: 'needsAction' | 'completed';
+    [key: string]: any;
+  }
+): Promise<{ success: boolean; task?: GoogleTask; error?: string }> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/tasks/lists/${taskListId}/tasks/${taskId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(updates),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return {
+      success: data.success || false,
+      task: data.task,
+    };
+  } catch (error) {
+    console.error('Error updating task:', error);
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+}
+
+/**
+ * Delete a task
+ */
+export async function deleteTask(
+  taskListId: string,
+  taskId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/tasks/lists/${taskListId}/tasks/${taskId}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return {
+      success: data.success || false,
+    };
+  } catch (error) {
+    console.error('Error deleting task:', error);
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
 }
 
