@@ -199,3 +199,78 @@ The unified API runs on `http://localhost:5002` and exposes all endpoints:
 ## CORS
 
 CORS is enabled on the API to allow frontend integration from any origin.
+
+## Error Handling
+
+The API includes comprehensive error handling:
+- **Validation Errors**: Returns 400 with validation details
+- **Authentication Errors**: Returns 401/403 with clear messages
+- **Not Found Errors**: Returns 404 for missing resources
+- **Server Errors**: Returns 500 with error details (in development mode)
+- **Graceful Degradation**: Calendar/Tasks endpoints gracefully handle missing credentials
+
+## Authentication
+
+The API uses Google OAuth2 for calendar and tasks access:
+- Service account credentials: `app/creds/*.json`
+- OAuth token storage: `app/src/token.json`
+- Automatic token refresh on expiration
+- Shared auth provider for both Calendar and Tasks APIs
+
+See `app/src/AUTH_ARCHITECTURE.md` for detailed authentication setup.
+
+## Development
+
+### Adding New Endpoints
+
+1. Add route handler in `app.py`:
+```python
+@app.route('/your-endpoint', methods=['GET'])
+def your_endpoint():
+    """Your endpoint description"""
+    # Implementation
+    return jsonify({"success": True})
+```
+
+2. Add Swagger documentation using docstring format:
+```python
+"""
+Your Endpoint
+---
+tags:
+  - YourTag
+summary: Brief description
+description: Detailed description
+responses:
+  200:
+    description: Success response
+"""
+```
+
+3. Test using Swagger UI at `http://localhost:5002/api-docs`
+
+### Testing
+
+Use the Swagger UI for interactive testing, or use curl:
+
+```bash
+# Health check
+curl http://localhost:5002/health
+
+# Chat endpoint
+curl -X POST http://localhost:5002/chat \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "Schedule a meeting tomorrow at 2pm"}'
+```
+
+## Production Considerations
+
+For production deployment, consider:
+- **Environment Variables**: Use environment variables for all secrets
+- **HTTPS**: Enable HTTPS with proper SSL certificates
+- **Rate Limiting**: Implement rate limiting to prevent abuse
+- **Logging**: Add structured logging (e.g., with Python logging module)
+- **Monitoring**: Add health check monitoring and alerting
+- **Error Tracking**: Integrate error tracking (e.g., Sentry)
+- **CORS**: Restrict CORS to specific origins in production
+- **Authentication**: Implement proper user authentication and authorization

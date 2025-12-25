@@ -1,8 +1,23 @@
 """
 Flask API Application
 
-RESTful API for AI agent chat interface and calendar operations.
-Combines chat/AI agent endpoints with direct calendar management endpoints.
+Unified RESTful API server that provides:
+- AI Agent Chat Interface: Natural language task scheduling via LangGraph agent
+- Calendar Operations: Direct CRUD operations for Google Calendar events
+- Task Management: Google Tasks integration
+- Health Monitoring: Health check endpoints for service monitoring
+
+The API uses Flask with Swagger/OpenAPI documentation and supports:
+- JSON request/response format
+- Server-Sent Events (SSE) for streaming chat responses
+- CORS for frontend integration
+- Error handling with graceful degradation
+
+Architecture:
+- Chat endpoints interact with the LangGraph agent in app/ai_agent/
+- Calendar/Task endpoints use repository pattern (app/src/)
+- Authentication via GoogleAuthProvider with OAuth2
+- State management for conversation continuity and human-in-the-loop workflows
 """
 
 import sys
