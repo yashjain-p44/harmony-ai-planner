@@ -37,6 +37,8 @@ from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, BaseMe
 from app.api.models import ChatRequest, ChatResponse
 from pydantic import ValidationError
 from calendar_repository import GoogleCalendarRepository
+from tasks_repository import GoogleTasksRepository
+from google_auth_provider import GoogleAuthProvider
 
 
 app = Flask(__name__)
@@ -86,6 +88,14 @@ swagger_template = {
         {
             "name": "Events",
             "description": "Event management endpoints"
+        },
+        {
+            "name": "Task Lists",
+            "description": "Task list management endpoints"
+        },
+        {
+            "name": "Tasks",
+            "description": "Task management endpoints"
         }
     ],
     "definitions": {
@@ -169,13 +179,43 @@ swagger_template = {
 
 swagger = Swagger(app, config=swagger_config, template=swagger_template)
 
+# Initialize shared auth provider with both calendar and tasks scopes
+# This ensures a single token with all required scopes
+shared_auth_provider = None
+try:
+    shared_auth_provider = GoogleAuthProvider(
+        scopes=[
+            "https://www.googleapis.com/auth/calendar",
+            "https://www.googleapis.com/auth/tasks"
+        ]
+    )
+    print("Shared auth provider initialized with calendar and tasks scopes")
+except Exception as e:
+    print(f"Warning: Could not initialize shared auth provider: {e}")
+    print("Repositories will use separate authentication.")
+
 # Initialize calendar repository (handle auth errors gracefully)
 try:
-    calendar_repo = GoogleCalendarRepository()
+    if shared_auth_provider:
+        calendar_repo = GoogleCalendarRepository(auth_provider=shared_auth_provider)
+    else:
+        calendar_repo = GoogleCalendarRepository()
 except Exception as e:
     print(f"Warning: Could not initialize calendar repository: {e}")
     print("Calendar endpoints will not be available. Chat endpoints should still work.")
     calendar_repo = None
+
+# Initialize tasks repository
+try:
+    if shared_auth_provider:
+        tasks_repo = GoogleTasksRepository(auth_provider=shared_auth_provider)
+    else:
+        tasks_repo = GoogleTasksRepository()
+except Exception as e:
+    print(f"Warning: Could not initialize tasks repository: {e}")
+    print("Tasks endpoints will not be available.")
+    print(f"Error details: {str(e)}")
+    tasks_repo = None
 
 
 def parse_datetime(dt_str: str) -> datetime:
@@ -1581,6 +1621,511 @@ def delete_event(event_id: str):
         return jsonify({
             "success": False,
             "error": f"Failed to delete event: {str(e)}"
+        }), 404 if e.resp.status == 404 else 500
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Internal server error: {str(e)}"
+        }), 500
+
+
+# ============================================================================
+# Tasks API Endpoints
+# ============================================================================
+
+@app.route('/tasks/health', methods=['GET'])
+def tasks_health_check():
+    """
+    Tasks Health Check Endpoint
+    ---
+    tags:
+      - Tasks
+    summary: Check Tasks API health status
+    description: Returns the health status of the Tasks API service
+    responses:
+      200:
+        description: API is healthy
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              example: healthy
+            service:
+              type: string
+              example: tasks-api
+    """
+    return jsonify({
+        "status": "healthy",
+        "service": "tasks-api"
+    }), 200
+
+
+@app.route('/tasks/lists', methods=['GET'])
+def list_task_lists():
+    """
+    List All Task Lists
+    ---
+    tags:
+      - Task Lists
+    summary: List all task lists accessible by the user
+    description: Retrieves a list of all task lists that the authenticated user has access to
+    responses:
+      200:
+        description: Successfully retrieved task lists
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            task_lists:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    example: "@default"
+                  title:
+                    type: string
+                    example: "My Tasks"
+            count:
+              type: integer
+              example: 1
+      500:
+        description: Server error
+    """
+    if tasks_repo is None:
+        return jsonify({
+            "success": False,
+            "error": "Tasks repository not initialized"
+        }), 503
+    
+    try:
+        task_lists = tasks_repo.list_task_lists()
+        return jsonify({
+            "success": True,
+            "task_lists": task_lists,
+            "count": len(task_lists)
+        }), 200
+    except HttpError as e:
+        return jsonify({
+            "success": False,
+            "error": f"Failed to list task lists: {str(e)}"
+        }), 500
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Internal server error: {str(e)}"
+        }), 500
+
+
+@app.route('/tasks/lists/<task_list_id>', methods=['GET'])
+def get_task_list(task_list_id: str):
+    """
+    Get Task List by ID
+    ---
+    tags:
+      - Task Lists
+    summary: Get a specific task list by ID
+    description: Retrieves detailed information about a specific task list
+    parameters:
+      - name: task_list_id
+        in: path
+        type: string
+        required: true
+        description: The ID of the task list to retrieve
+        example: "@default"
+    responses:
+      200:
+        description: Successfully retrieved task list
+      404:
+        description: Task list not found
+      500:
+        description: Server error
+    """
+    if tasks_repo is None:
+        return jsonify({
+            "success": False,
+            "error": "Tasks repository not initialized"
+        }), 503
+    
+    try:
+        task_list = tasks_repo.get_task_list(task_list_id)
+        return jsonify({
+            "success": True,
+            "task_list": task_list
+        }), 200
+    except HttpError as e:
+        return jsonify({
+            "success": False,
+            "error": f"Failed to get task list: {str(e)}"
+        }), 404 if e.resp.status == 404 else 500
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Internal server error: {str(e)}"
+        }), 500
+
+
+@app.route('/tasks/lists/<task_list_id>/tasks', methods=['GET'])
+def list_tasks(task_list_id: str):
+    """
+    List Tasks
+    ---
+    tags:
+      - Tasks
+    summary: List tasks from a task list
+    description: Retrieves a list of tasks from the specified task list with optional filtering
+    parameters:
+      - name: task_list_id
+        in: path
+        type: string
+        required: true
+        description: Task list identifier
+        example: "@default"
+      - name: show_completed
+        in: query
+        type: boolean
+        required: false
+        default: false
+        description: Whether to show completed tasks
+      - name: show_deleted
+        in: query
+        type: boolean
+        required: false
+        default: false
+        description: Whether to show deleted tasks
+      - name: max_results
+        in: query
+        type: integer
+        required: false
+        description: Maximum number of tasks to return
+    responses:
+      200:
+        description: Successfully retrieved tasks
+      500:
+        description: Server error
+    """
+    if tasks_repo is None:
+        return jsonify({
+            "success": False,
+            "error": "Tasks repository not initialized"
+        }), 503
+    
+    try:
+        show_completed = request.args.get('show_completed', 'false').lower() == 'true'
+        show_deleted = request.args.get('show_deleted', 'false').lower() == 'true'
+        max_results = request.args.get('max_results', type=int)
+        
+        tasks = tasks_repo.list_tasks(
+            task_list_id=task_list_id,
+            show_completed=show_completed,
+            show_deleted=show_deleted,
+            max_results=max_results
+        )
+        
+        return jsonify({
+            "success": True,
+            "tasks": tasks,
+            "count": len(tasks)
+        }), 200
+    except HttpError as e:
+        return jsonify({
+            "success": False,
+            "error": f"Failed to list tasks: {str(e)}"
+        }), 500
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Internal server error: {str(e)}"
+        }), 500
+
+
+@app.route('/tasks/lists/<task_list_id>/tasks/<task_id>', methods=['GET'])
+def get_task(task_list_id: str, task_id: str):
+    """
+    Get Task by ID
+    ---
+    tags:
+      - Tasks
+    summary: Get a specific task by ID
+    description: Retrieves detailed information about a specific task
+    parameters:
+      - name: task_list_id
+        in: path
+        type: string
+        required: true
+        description: Task list identifier
+        example: "@default"
+      - name: task_id
+        in: path
+        type: string
+        required: true
+        description: The ID of the task to retrieve
+        example: "task123"
+    responses:
+      200:
+        description: Successfully retrieved task
+      404:
+        description: Task not found
+      500:
+        description: Server error
+    """
+    if tasks_repo is None:
+        return jsonify({
+            "success": False,
+            "error": "Tasks repository not initialized"
+        }), 503
+    
+    try:
+        task = tasks_repo.get_task(task_id, task_list_id=task_list_id)
+        return jsonify({
+            "success": True,
+            "task": task
+        }), 200
+    except HttpError as e:
+        return jsonify({
+            "success": False,
+            "error": f"Failed to get task: {str(e)}"
+        }), 404 if e.resp.status == 404 else 500
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Internal server error: {str(e)}"
+        }), 500
+
+
+@app.route('/tasks/lists/<task_list_id>/tasks', methods=['POST'])
+def create_task(task_list_id: str):
+    """
+    Create Task
+    ---
+    tags:
+      - Tasks
+    summary: Create a new task
+    description: Creates a new task in the specified task list
+    parameters:
+      - name: task_list_id
+        in: path
+        type: string
+        required: true
+        description: Task list identifier
+        example: "@default"
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - title
+          properties:
+            title:
+              type: string
+              description: Title of the task
+              example: "Complete project"
+            notes:
+              type: string
+              description: Notes/description for the task
+              example: "Finish the project documentation"
+            due:
+              type: string
+              description: Due date in RFC3339 format
+              example: "2024-12-31T23:59:59Z"
+    responses:
+      201:
+        description: Successfully created task
+      400:
+        description: Bad request (missing required fields)
+      500:
+        description: Server error
+    """
+    if tasks_repo is None:
+        return jsonify({
+            "success": False,
+            "error": "Tasks repository not initialized"
+        }), 503
+    
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({
+                "success": False,
+                "error": "Request body is required"
+            }), 400
+        
+        title = data.get('title')
+        if not title:
+            return jsonify({
+                "success": False,
+                "error": "Title is required"
+            }), 400
+        
+        task = tasks_repo.create_task(
+            title=title,
+            task_list_id=task_list_id,
+            notes=data.get('notes'),
+            due=data.get('due'),
+            **{k: v for k, v in data.items() if k not in ['title', 'notes', 'due']}
+        )
+        
+        return jsonify({
+            "success": True,
+            "task": task
+        }), 201
+    except HttpError as e:
+        return jsonify({
+            "success": False,
+            "error": f"Failed to create task: {str(e)}"
+        }), 500
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Internal server error: {str(e)}"
+        }), 500
+
+
+@app.route('/tasks/lists/<task_list_id>/tasks/<task_id>', methods=['PUT'])
+def update_task(task_list_id: str, task_id: str):
+    """
+    Update Task
+    ---
+    tags:
+      - Tasks
+    summary: Update an existing task
+    description: Updates an existing task in the specified task list
+    parameters:
+      - name: task_list_id
+        in: path
+        type: string
+        required: true
+        description: Task list identifier
+        example: "@default"
+      - name: task_id
+        in: path
+        type: string
+        required: true
+        description: The ID of the task to update
+        example: "task123"
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            title:
+              type: string
+              description: New title of the task
+              example: "Updated task title"
+            notes:
+              type: string
+              description: New notes/description for the task
+              example: "Updated notes"
+            due:
+              type: string
+              description: New due date in RFC3339 format
+              example: "2024-12-31T23:59:59Z"
+            status:
+              type: string
+              description: Task status ("needsAction" or "completed")
+              example: "completed"
+    responses:
+      200:
+        description: Successfully updated task
+      404:
+        description: Task not found
+      500:
+        description: Server error
+    """
+    if tasks_repo is None:
+        return jsonify({
+            "success": False,
+            "error": "Tasks repository not initialized"
+        }), 503
+    
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({
+                "success": False,
+                "error": "Request body is required"
+            }), 400
+        
+        task = tasks_repo.update_task(
+            task_id=task_id,
+            task_list_id=task_list_id,
+            title=data.get('title'),
+            notes=data.get('notes'),
+            due=data.get('due'),
+            status=data.get('status'),
+            **{k: v for k, v in data.items() if k not in ['title', 'notes', 'due', 'status']}
+        )
+        
+        return jsonify({
+            "success": True,
+            "task": task
+        }), 200
+    except HttpError as e:
+        return jsonify({
+            "success": False,
+            "error": f"Failed to update task: {str(e)}"
+        }), 404 if e.resp.status == 404 else 500
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Internal server error: {str(e)}"
+        }), 500
+
+
+@app.route('/tasks/lists/<task_list_id>/tasks/<task_id>', methods=['DELETE'])
+def delete_task(task_list_id: str, task_id: str):
+    """
+    Delete Task
+    ---
+    tags:
+      - Tasks
+    summary: Delete a task
+    description: Deletes a task from the specified task list
+    parameters:
+      - name: task_list_id
+        in: path
+        type: string
+        required: true
+        description: Task list identifier
+        example: "@default"
+      - name: task_id
+        in: path
+        type: string
+        required: true
+        description: The ID of the task to delete
+        example: "task123"
+    responses:
+      200:
+        description: Successfully deleted task
+      404:
+        description: Task not found
+      500:
+        description: Server error
+    """
+    if tasks_repo is None:
+        return jsonify({
+            "success": False,
+            "error": "Tasks repository not initialized"
+        }), 503
+    
+    try:
+        tasks_repo.delete_task(task_id, task_list_id=task_list_id)
+        return jsonify({
+            "success": True,
+            "message": "Task deleted successfully"
+        }), 200
+    except HttpError as e:
+        return jsonify({
+            "success": False,
+            "error": f"Failed to delete task: {str(e)}"
         }), 404 if e.resp.status == 404 else 500
     except Exception as e:
         return jsonify({

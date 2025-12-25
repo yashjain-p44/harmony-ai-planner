@@ -15,17 +15,24 @@ import {
   X,
   Edit2,
   Trash2,
-  Zap
+  Zap,
+  Folder
 } from 'lucide-react';
 import type { Task, Category } from '../App';
+import type { TaskList } from '../services/api';
+import { TaskForm } from './TaskForm';
 
 interface TaskManagementProps {
   tasks: Task[];
+  taskLists: TaskList[];
+  selectedTaskListId: string;
+  onTaskListChange: (taskListId: string) => void;
   onBack: () => void;
-  onAddTask: () => void;
+  onAddTask: (task: Task) => void;
   onUpdateTask: (taskId: string, updates: Partial<Task>) => void;
   onDeleteTask: (taskId: string) => void;
   onScheduleTask: (taskId: string) => void;
+  onRefreshTasks?: () => void;
 }
 
 type ViewMode = 'list' | 'kanban';
@@ -35,11 +42,15 @@ type FilterPriority = 'all' | 'high' | 'medium' | 'low';
 
 export function TaskManagement({ 
   tasks, 
+  taskLists,
+  selectedTaskListId,
+  onTaskListChange,
   onBack, 
   onAddTask, 
   onUpdateTask, 
   onDeleteTask,
-  onScheduleTask 
+  onScheduleTask,
+  onRefreshTasks
 }: TaskManagementProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -47,6 +58,7 @@ export function TaskManagement({
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
   const [filterTime, setFilterTime] = useState<FilterTime>('all');
   const [filterPriority, setFilterPriority] = useState<FilterPriority>('all');
+  const [showTaskForm, setShowTaskForm] = useState(false);
 
   // Calculate statistics
   const stats = useMemo(() => {
@@ -89,7 +101,7 @@ export function TaskManagement({
 
   // AI Suggestions
   const aiSuggestions = useMemo(() => {
-    const suggestions = [];
+    const suggestions: Array<{ id: string; message: string; action: string }> = [];
     
     const noDeadline = tasks.filter(t => !t.deadline).length;
     if (noDeadline > 0) {
@@ -145,6 +157,26 @@ export function TaskManagement({
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Task List Selector */}
+            <div className="bg-white/80 rounded-xl border-2 border-gray-300 p-1 flex items-center gap-2 shadow-sm">
+              <Folder className="w-4 h-4 text-gray-600 ml-2" aria-hidden="true" />
+              {taskLists.length > 0 ? (
+                <select
+                  value={selectedTaskListId}
+                  onChange={(e) => onTaskListChange(e.target.value)}
+                  className="px-4 py-2 rounded-lg bg-transparent border-none text-gray-900 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-300 cursor-pointer appearance-none pr-8 min-w-[150px]"
+                  aria-label="Select task list"
+                >
+                  {taskLists.map((taskList) => (
+                    <option key={taskList.id} value={taskList.id}>
+                      {taskList.title}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span className="px-4 py-2 text-gray-500 text-sm">Loading lists...</span>
+              )}
+            </div>
             <div className="bg-white/80 rounded-xl border-2 border-gray-300 p-1 flex gap-1 shadow-sm">
               <button
                 onClick={() => setViewMode('list')}
@@ -175,7 +207,7 @@ export function TaskManagement({
             </div>
 
             <button
-              onClick={onAddTask}
+              onClick={() => setShowTaskForm(true)}
               className="px-6 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-md hover:from-blue-700 hover:to-purple-700 hover:shadow-lg hover:scale-105 transition-all flex items-center gap-2 focus:outline-none focus:ring-4 focus:ring-blue-300"
             >
               <Plus className="w-5 h-5" aria-hidden="true" />
@@ -369,6 +401,19 @@ export function TaskManagement({
           </motion.div>
         )}
       </div>
+
+      {/* Task Form Modal */}
+      <AnimatePresence>
+        {showTaskForm && (
+          <TaskForm
+            onClose={() => setShowTaskForm(false)}
+            onSubmit={(task) => {
+              onAddTask(task);
+              setShowTaskForm(false);
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
