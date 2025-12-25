@@ -1,142 +1,334 @@
-# task-ai-poc
-A POC for AI driven task manager scheduler
+# AI Task Scheduler & Calendar Assistant
 
-## Frontends
+[![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://www.python.org/)
+[![React](https://img.shields.io/badge/React-18.3.1-61dafb.svg)](https://reactjs.org/)
+[![LangGraph](https://img.shields.io/badge/LangGraph-0.2+-green.svg)](https://langchain-ai.github.io/langgraph/)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-This project has two frontend implementations:
+An intelligent AI-powered task scheduling and calendar management system that uses natural language to help users organize their time, schedule habits, and manage calendar events through Google Calendar integration.
 
-### 1. Original Frontend (`frontend/`)
-The initial prototype frontend with basic chat and planning interfaces.
+## 🎯 Overview
 
-### 2. Figma Frontend (`figma-frontend/`)
-A complete, production-ready UI exported from Figma with:
-- Beautiful glassmorphism design
-- Multi-step onboarding flow
-- AI chat interface with natural language parsing
-- Calendar views (Day/Week/Month)
-- Advanced task management (List/Kanban views)
-- Google Calendar integration
-- Full accessibility support
+This project combines a sophisticated LangGraph-based AI agent with a modern React frontend to provide an intuitive interface for:
+- **Natural Language Task Scheduling**: Describe tasks in plain English and let the AI schedule them
+- **Habit Planning**: Automatically schedule recurring habits based on your preferences
+- **Calendar Integration**: Seamless Google Calendar sync with conflict detection
+- **Human-in-the-Loop**: Approval workflow for scheduling decisions
+- **Smart Time Slot Finding**: AI-powered free time detection and optimization
 
-The Figma frontend is built with React and Vite. See [figma-frontend/README.md](figma-frontend/README.md) for detailed documentation.
+## ✨ Key Features
+
+### AI Agent Capabilities
+- **Intent Classification**: Automatically understands user intent (habit scheduling, task scheduling, calendar analysis)
+- **Intelligent Planning**: Extracts task details, constraints, and preferences from natural language
+- **Conflict Detection**: Analyzes existing calendar events to find optimal time slots
+- **Approval Workflow**: Requests user confirmation before creating calendar events
+- **Error Handling**: Graceful handling of infeasible plans with clear explanations
+
+### Frontend Features
+- **Modern UI**: Beautiful glassmorphism design with smooth animations
+- **Multi-View Calendar**: Day, Week, and Month views
+- **Task Management**: List and Kanban board views with filtering
+- **Onboarding Flow**: Guided setup for new users
+- **Real-time Updates**: Live calendar sync and status indicators
+- **Accessibility**: WCAG 2.0 compliant with full keyboard navigation
+
+### Backend API
+- **RESTful API**: Comprehensive Flask API with Swagger documentation
+- **Calendar Operations**: Full CRUD operations for calendars and events
+- **Task Management**: Google Tasks integration
+- **Streaming Support**: Real-time chat responses via Server-Sent Events
+- **Health Monitoring**: Built-in health check endpoints
+
+## 🏗️ Architecture
+
+### System Overview
+
+```
+┌─────────────────┐
+│  React Frontend │  (figma-frontend/)
+│  (TypeScript)   │
+└────────┬────────┘
+         │ HTTP/REST
+         ▼
+┌─────────────────┐
+│   Flask API     │  (app/api/app.py)
+│   (Python)      │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  LangGraph AI   │  (app/ai_agent/)
+│     Agent       │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ Google Calendar │
+│  & Tasks APIs   │
+└─────────────────┘
+```
+
+### AI Agent Flow
+
+The AI agent uses a state machine pattern with LangGraph:
+
+1. **Intent Classification** → Determines user intent (habit, task, analysis)
+2. **Planning Phase** → Extracts requirements and constraints
+3. **Execution Decision** → Decides whether to execute, dry-run, or cancel
+4. **Calendar Fetching** → Retrieves existing events from Google Calendar
+5. **Slot Computation** → Finds free time slots
+6. **Filtering & Selection** → Applies constraints and selects optimal slots
+7. **Approval** → Requests user confirmation
+8. **Event Creation** → Creates calendar events if approved
+9. **Summary** → Provides completion summary
+
+### Project Structure
+
+```
+task-ai-poc/
+├── app/
+│   ├── ai_agent/          # LangGraph AI agent implementation
+│   │   ├── graph.py       # Agent graph definition
+│   │   ├── state.py       # State schema
+│   │   ├── router.py      # Routing logic
+│   │   ├── nodes/         # Agent nodes (intent, planning, execution)
+│   │   └── tools/         # Calendar tools
+│   ├── api/               # Flask REST API
+│   │   ├── app.py         # Main API server
+│   │   └── models/        # Pydantic request/response models
+│   ├── src/               # Core repositories
+│   │   ├── calendar_repository.py
+│   │   ├── tasks_repository.py
+│   │   └── google_auth_provider.py
+│   └── creds/             # Credentials (gitignored)
+├── figma-frontend/        # React frontend
+│   ├── src/
+│   │   ├── components/    # React components
+│   │   ├── services/      # API client
+│   │   └── styles/        # CSS/Tailwind styles
+│   └── package.json
+├── requirements.txt       # Python dependencies
+└── README.md             # This file
+```
+
+## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js (v18 or higher)
-- npm (comes with Node.js)
 
-### Running the Original Frontend
+- **Python 3.9+** with pip
+- **Node.js 18+** with npm
+- **Google Cloud Project** with Calendar and Tasks APIs enabled
+- **OpenAI API Key** for the AI agent
 
-1. Navigate to the frontend directory:
+### Installation
+
+1. **Clone the repository:**
    ```bash
-   cd frontend
+   git clone <repository-url>
+   cd task-ai-poc
    ```
 
-2. Install dependencies:
+2. **Set up Python environment:**
    ```bash
-   npm install
-   ```
-
-3. Start the development server:
-   ```bash
-   npm run dev
-   ```
-
-The app will be available at `http://localhost:5173`.
-
-### Running the Figma Frontend
-
-1. Navigate to the figma-frontend directory:
-   ```bash
-   cd figma-frontend
-   ```
-
-2. Install dependencies (already done if following setup):
-   ```bash
-   npm install
-   ```
-
-3. Start the development server:
-   ```bash
-   npm run dev
-   ```
-
-The app will be available at `http://localhost:5173` (or next available port if 5173 is in use).
-
-### Stopping the Servers
-
-- If running in a terminal: Press `Ctrl+C`
-- If running in the background: 
-  ```bash
-  lsof -ti:5173 | xargs kill -9
-  ```
-
-## Backend
-
-The backend is a unified Flask API located in `app/api/app.py` that provides:
-
-- **AI Agent Chat Interface** - Natural language planning and scheduling with LangGraph
-- **Calendar Operations** - Direct CRUD operations for calendars and events
-- **Health Check Endpoints** - Monitoring for both services
-
-### Setup
-
-1. Install dependencies:
-   ```bash
+   # Create virtual environment
+   python3 -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   
+   # Install dependencies
    pip install -r requirements.txt
    ```
 
-2. Set up environment variables (see AI Agent section)
+3. **Set up environment variables:**
+   ```bash
+   # Create .env file in project root
+   cp .env.example .env  # If example exists
+   
+   # Add your API keys
+   OPENAI_API_KEY=your-openai-api-key
+   ```
 
-### Running the API
+4. **Set up Google Calendar authentication:**
+   ```bash
+   # Place your Google service account credentials in:
+   # app/creds/ai-task-master-7dc79-firebase-adminsdk-fbsvc-9d2fe1e4e1.json
+   # (See app/creds/*.json.example for format)
+   
+   # Or use OAuth flow (see app/src/AUTH_ARCHITECTURE.md)
+   ```
 
-Start the unified API server (port 5002):
+5. **Set up frontend:**
+   ```bash
+   cd figma-frontend
+   npm install
+   ```
+
+### Running the Application
+
+1. **Start the backend API:**
+   ```bash
+   # From project root
+   python3 app/api/app.py
+   ```
+   The API will be available at `http://localhost:5002`
+   - API Documentation: `http://localhost:5002/api-docs`
+
+2. **Start the frontend (in a new terminal):**
+   ```bash
+   cd figma-frontend
+   npm run dev
+   ```
+   The frontend will be available at `http://localhost:5173`
+
+3. **Test the AI agent directly (optional):**
+   ```bash
+   python3 app/ai_agent/run_agent.py
+   ```
+
+## 🧪 Testing
+
+### Backend Tests
+
 ```bash
-python3 app/api/app.py
+# Run AI agent tests
+python3 app/ai_agent/test_comprehensive.py
+python3 app/ai_agent/test_tool.py
+
+# Run repository tests
+python3 app/src/test_calendar_repository.py
+python3 app/src/test_tasks_repository.py
+python3 app/src/test_firestore_repository.py
 ```
 
-This single command starts the server with all endpoints available:
-- Chat/AI endpoints at `/health` and `/chat`
-- Calendar endpoints at `/calendar/*`
+### API Testing
+
+Use the Swagger UI at `http://localhost:5002/api-docs` to test endpoints interactively.
+
+### Frontend Testing
+
+```bash
+cd figma-frontend
+npm test  # If test suite is configured
+```
+
+## 📚 Documentation
 
 ### API Documentation
 
-Interactive Swagger/OpenAPI documentation is available when the API is running:
+- **Interactive Swagger UI**: `http://localhost:5002/api-docs`
+- **API README**: [app/api/README.md](app/api/README.md)
 
-- **Unified API Docs**: http://localhost:5002/api-docs
+### AI Agent Documentation
 
-The documentation includes all endpoints organized by tags:
-- Health - Health check endpoints
-- Chat - AI agent chat endpoints
-- Calendars - Calendar management endpoints
-- Events - Event management endpoints
+- **Agent README**: [app/ai_agent/README.md](app/ai_agent/README.md)
+- **Architecture**: See Architecture section above
 
-For detailed endpoint documentation, see [app/api/README.md](app/api/README.md).
+### Frontend Documentation
 
-## AI Agent
+- **Frontend README**: [figma-frontend/README.md](figma-frontend/README.md)
+- **Integration Guide**: [figma-frontend/INTEGRATION_GUIDE.md](figma-frontend/INTEGRATION_GUIDE.md)
 
-The AI agent is built with LangGraph and located in `app/ai_agent`.
+### Authentication
 
-### Setup
+- **Auth Architecture**: [app/src/AUTH_ARCHITECTURE.md](app/src/AUTH_ARCHITECTURE.md)
 
-1. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+## 🔧 Configuration
 
-2. Set up environment variables:
-   ```bash
-   cp .env.example .env
-   # Edit .env and add your OPENAI_API_KEY
-   ```
+### Environment Variables
 
-### Running the Agent
+Create a `.env` file in the project root:
 
-```bash
-source venv/bin/activate
-python3 app/ai_agent/run_agent.py
+```env
+# OpenAI API
+OPENAI_API_KEY=your-key-here
+
+# Google Calendar (if using OAuth)
+GOOGLE_CLIENT_ID=your-client-id
+GOOGLE_CLIENT_SECRET=your-client-secret
+GOOGLE_REDIRECT_URI=http://localhost:5002/auth/callback
+
+# API Configuration
+API_PORT=5002
+API_HOST=0.0.0.0
 ```
 
-Or as a module:
-```bash
-python3 -m app.ai_agent.run_agent
+### Frontend Configuration
+
+Edit `figma-frontend/.env` (or create it):
+
+```env
+VITE_API_BASE_URL=http://localhost:5002
 ```
+
+## 🛠️ Development
+
+### Code Style
+
+- **Python**: Follow PEP 8 style guide
+- **TypeScript/React**: Use ESLint and Prettier configurations
+- **Documentation**: Add docstrings to all functions and classes
+
+### Adding New Features
+
+1. **New AI Agent Node**: Add to `app/ai_agent/nodes/` and register in `graph.py`
+2. **New API Endpoint**: Add route in `app/api/app.py` with Swagger documentation
+3. **New Frontend Component**: Add to `figma-frontend/src/components/`
+
+### Debugging
+
+- **Backend**: Use Python debugger or print statements (check console output)
+- **Frontend**: Use browser DevTools and React DevTools
+- **AI Agent**: Check state transitions in `app/ai_agent/state.py`
+
+## 📦 Dependencies
+
+### Backend (Python)
+- **LangGraph**: Agent orchestration framework
+- **LangChain**: LLM integration
+- **Flask**: Web framework
+- **Google API Client**: Calendar and Tasks integration
+- **Pydantic**: Data validation
+
+See [requirements.txt](requirements.txt) for complete list.
+
+### Frontend (Node.js)
+- **React 18**: UI framework
+- **TypeScript**: Type safety
+- **Vite**: Build tool
+- **Tailwind CSS**: Styling
+- **Framer Motion**: Animations
+
+See [figma-frontend/package.json](figma-frontend/package.json) for complete list.
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📝 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 🙏 Acknowledgments
+
+- **LangGraph** for the agent orchestration framework
+- **LangChain** for LLM integration
+- **Google Calendar API** for calendar integration
+- **React** and **Vite** for the frontend framework
+
+## 📧 Support
+
+For issues, questions, or contributions, please open an issue on the repository.
+
+---
+
+**Note**: This is a proof-of-concept project. For production use, consider:
+- Adding comprehensive error handling
+- Implementing proper authentication and authorization
+- Adding unit and integration tests
+- Setting up CI/CD pipelines
+- Adding monitoring and logging
+- Implementing rate limiting and security best practices
