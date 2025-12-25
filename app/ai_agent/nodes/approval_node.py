@@ -72,10 +72,35 @@ def approval_node(state: AgentState) -> AgentState:
             }
         }
     
-    # Generate summary of selected slots for approval
-    habit_name = habit_definition.get("habit_name", "Scheduled Habit")
-    frequency = habit_definition.get("frequency", "unknown")
-    duration_minutes = habit_definition.get("duration_minutes", 30)
+    # Check if this is a task or habit
+    task_definition = state.get("task_definition", {})
+    is_task = bool(task_definition)
+    
+    print(f"[approval_node] ===== APPROVAL NODE (TASK MODE) =====" if is_task else f"[approval_node] ===== APPROVAL NODE (HABIT MODE) =====")
+    print(f"[approval_node] Item type: {'TASK' if is_task else 'HABIT'}")
+    
+    if is_task:
+        # Task scheduling
+        task_name = task_definition.get("task_name", "Task")
+        duration_minutes = task_definition.get("estimated_duration_minutes", 60)
+        priority = task_definition.get("priority", "MEDIUM")
+        task_due = task_definition.get("due")
+        item_name = task_name
+        item_type = "task"
+        item_description = f"Priority: {priority}, Duration: {duration_minutes} min"
+        print(f"[approval_node] Task details:")
+        print(f"[approval_node]   - Name: {task_name}")
+        print(f"[approval_node]   - Priority: {priority}")
+        print(f"[approval_node]   - Duration: {duration_minutes} minutes")
+        print(f"[approval_node]   - Due date: {task_due or 'Not specified'}")
+    else:
+        # Habit scheduling
+        habit_name = habit_definition.get("habit_name", "Scheduled Habit")
+        frequency = habit_definition.get("frequency", "unknown")
+        duration_minutes = habit_definition.get("duration_minutes", 30)
+        item_name = habit_name
+        item_type = "habit"
+        item_description = f"{frequency}, {duration_minutes} min"
     
     # Format slots summary
     # Always calculate habit_duration_minutes from end_time - start_time
@@ -100,7 +125,11 @@ def approval_node(state: AgentState) -> AgentState:
         except (ValueError, KeyError):
             continue
     
-    summary_message = f"Ready to schedule '{habit_name}' ({frequency}, {duration_minutes} min) in {len(selected_slots)} time slot(s):\n"
+    if is_task:
+        summary_message = f"Ready to schedule task '{item_name}' ({item_description}) in {len(selected_slots)} time slot(s):\n"
+    else:
+        summary_message = f"Ready to schedule '{item_name}' ({item_description}) in {len(selected_slots)} time slot(s):\n"
+    
     for slot_info in slots_summary:
         summary_message += f"  - {slot_info['date']} at {slot_info['time']} ({slot_info['duration_minutes']} min)\n"
     
@@ -119,9 +148,17 @@ def approval_node(state: AgentState) -> AgentState:
     system_prompt = """You are a helpful assistant asking the user to approve a schedule. Be friendly, conversational, and concise. 
 Briefly mention what you found and ask them to review and approve. Don't repeat all the details - they'll see them in the approval box."""
     
-    prompt = f"""{system_prompt}
+    if is_task:
+        prompt = f"""{system_prompt}
 
-I found {len(selected_slots)} time slot(s) for '{habit_name}' ({frequency}, {duration_minutes} minutes):
+I found {len(selected_slots)} time slot(s) for task '{item_name}' ({item_description}):
+{slots_text}
+
+Your friendly message asking for approval:"""
+    else:
+        prompt = f"""{system_prompt}
+
+I found {len(selected_slots)} time slot(s) for '{item_name}' ({item_description}):
 {slots_text}
 
 Your friendly message asking for approval:"""
@@ -132,18 +169,45 @@ Your friendly message asking for approval:"""
     # Set to PENDING to require human approval
     # The approval state will be updated by the frontend when user responds
     approval_state = "PENDING"
-    print("[approval_node] Setting approval state to PENDING - waiting for user approval")
+    print("[approval_node] ===== SETTING APPROVAL STATE TO PENDING =====")
+    print(f"[approval_node] Waiting for user approval for {len(selected_slots)} slot(s)")
+    
+    # Build explanation payload
+    explanation_payload = {
+        "summary": summary_message,
+        "selected_slots": selected_slots,
+        "slots_summary": slots_summary  # Include formatted slots for UI display
+    }
+    
+    if is_task:
+        explanation_payload.update({
+            "task_name": item_name,
+            "priority": priority,
+            "duration_minutes": duration_minutes
+        })
+        print(f"[approval_node] Approval payload includes task info:")
+        print(f"[approval_node]   - Task name: {item_name}")
+        print(f"[approval_node]   - Priority: {priority}")
+        print(f"[approval_node]   - Duration: {duration_minutes} min")
+    else:
+        explanation_payload.update({
+            "habit_name": item_name,
+            "frequency": frequency,
+            "duration_minutes": duration_minutes
+        })
+        print(f"[approval_node] Approval payload includes habit info:")
+        print(f"[approval_node]   - Habit name: {item_name}")
+        print(f"[approval_node]   - Frequency: {frequency}")
+        print(f"[approval_node]   - Duration: {duration_minutes} min")
+    
+    print(f"[approval_node] Explanation payload summary: {summary_message[:100]}...")
+    print(f"[approval_node] Number of slots in payload: {len(selected_slots)}")
+    print(f"[approval_node] Number of formatted slots: {len(slots_summary)}")
+    print(f"[approval_node] ===== APPROVAL NODE END (PENDING) =====")
     
     return {
         "messages": messages + [approval_message],
         "approval_state": approval_state,
-        "explanation_payload": {
-            "summary": summary_message,
-            "selected_slots": selected_slots,
-            "habit_name": habit_name,
-            "frequency": frequency,
-            "duration_minutes": duration_minutes,
-            "slots_summary": slots_summary  # Include formatted slots for UI display
-        }
+        "explanation_payload": explanation_payload
     }
 

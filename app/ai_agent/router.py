@@ -80,9 +80,29 @@ def route_by_execution_decision(state: AgentState) -> str:
     return state["execution_decision"]
 
 
+def route_by_task_or_habit(state: AgentState) -> str:
+    """
+    Route based on whether this is a task or habit scheduling flow.
+    
+    Args:
+        state: Current agent state
+        
+    Returns:
+        "filter_task_slots" if task_definition exists, "filter_slots" otherwise
+    """
+    task_definition = state.get("task_definition")
+    if task_definition:
+        return "filter_task_slots"
+    else:
+        return "filter_slots"
+
+
 def route_by_approval_state(state: AgentState) -> str:
     """
     Route based on human approval state.
+    
+    For CHANGES_REQUESTED, routes to task-specific or habit-specific filter nodes
+    based on whether task_definition or habit_definition exists in state.
     
     Args:
         state: Current agent state with approval_state field
@@ -92,4 +112,26 @@ def route_by_approval_state(state: AgentState) -> str:
         or "PENDING" (default)
     """
     approval_state = state.get("approval_state", "PENDING")
+    
+    # For CHANGES_REQUESTED, route to appropriate filter node based on task vs habit
+    if approval_state == "CHANGES_REQUESTED":
+        # Check if this is a task or habit
+        task_definition = state.get("task_definition")
+        if task_definition:
+            # Task scheduling: route back to filter_task_slots
+            return "CHANGES_REQUESTED_TASK"
+        else:
+            # Habit scheduling: route back to filter_slots
+            return "CHANGES_REQUESTED_HABIT"
+    
+    # For REJECTED, check if it's a task (tasks should just END, habits go to execution_decider)
+    if approval_state == "REJECTED":
+        task_definition = state.get("task_definition")
+        if task_definition:
+            # Task scheduling: just end
+            return "REJECTED_TASK"
+        else:
+            # Habit scheduling: go back to execution_decider
+            return "REJECTED"
+    
     return approval_state

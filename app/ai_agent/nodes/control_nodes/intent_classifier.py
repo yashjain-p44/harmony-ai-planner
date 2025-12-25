@@ -10,9 +10,15 @@ def intent_classifier(state: AgentState) -> AgentState:
     """
     Classify user intent into one of: HABIT_SCHEDULE, TASK_SCHEDULE, CALENDAR_ANALYSIS, UNKNOWN.
     
-    Reads: messages
+    Reads: messages, intent_type (if already set)
     Writes: intent_type
     """
+    # If intent_type is already set (e.g., by API endpoint), respect it and don't re-classify
+    existing_intent = state.get("intent_type")
+    if existing_intent and existing_intent in ["HABIT_SCHEDULE", "TASK_SCHEDULE", "CALENDAR_ANALYSIS", "UNKNOWN"]:
+        print(f"[intent_classifier] Intent type already set to: {existing_intent}, skipping classification")
+        return {"intent_type": existing_intent}
+    
     llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.3)
     
     messages = state.get("messages", [])

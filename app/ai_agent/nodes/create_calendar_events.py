@@ -18,12 +18,32 @@ def create_calendar_events(state: AgentState) -> AgentState:
     print("[create_calendar_events] Starting to create calendar events...")
     selected_slots = state.get("selected_slots", [])
     habit_definition = state.get("habit_definition", {})
+    task_definition = state.get("task_definition", {})
     
-    habit_name = habit_definition.get("habit_name", "Scheduled Habit")
-    description = habit_definition.get("description", "")
+    # Check if this is a task or habit
+    is_task = bool(task_definition)
     
-    print(f"[create_calendar_events] Creating events for habit: {habit_name}")
+    print(f"[create_calendar_events] ===== CREATE CALENDAR EVENTS START =====")
+    print(f"[create_calendar_events] Event type: {'TASK' if is_task else 'HABIT'}")
+    
+    if is_task:
+        event_name = task_definition.get("task_name", "Scheduled Task")
+        description = task_definition.get("notes", "")
+        priority = task_definition.get("priority", "MEDIUM")
+        duration = task_definition.get("estimated_duration_minutes", 60)
+        print(f"[create_calendar_events] Task details:")
+        print(f"[create_calendar_events]   - Name: {event_name}")
+        print(f"[create_calendar_events]   - Priority: {priority}")
+        print(f"[create_calendar_events]   - Duration: {duration} minutes")
+        print(f"[create_calendar_events]   - Description: {description[:100] if description else 'None'}...")
+    else:
+        event_name = habit_definition.get("habit_name", "Scheduled Habit")
+        description = habit_definition.get("description", "")
+        print(f"[create_calendar_events] Habit: {event_name}")
+    
     print(f"[create_calendar_events] Number of slots to create events for: {len(selected_slots)}")
+    if selected_slots:
+        print(f"[create_calendar_events] First slot: {selected_slots[0].get('start', 'N/A')} to {selected_slots[0].get('end', 'N/A')}")
     
     created_events: List[Dict] = []
     
@@ -41,7 +61,7 @@ def create_calendar_events(state: AgentState) -> AgentState:
         try:
             # Use the calendar tool to create the event
             result_json = create_calendar_event_tool.invoke({
-                "summary": habit_name,
+                "summary": event_name,
                 "start_time": start_time,
                 "end_time": end_time,
                 "description": description,
@@ -55,7 +75,7 @@ def create_calendar_events(state: AgentState) -> AgentState:
                 event_data = result.get("event", {})
                 created_event = {
                     "id": event_data.get("id"),
-                    "summary": event_data.get("summary", habit_name),
+                    "summary": event_data.get("summary", event_name),
                     "description": event_data.get("description", description),
                     "start": event_data.get("start"),
                     "end": event_data.get("end"),
@@ -64,19 +84,26 @@ def create_calendar_events(state: AgentState) -> AgentState:
                     "status": "confirmed"
                 }
                 created_events.append(created_event)
-                print(f"[create_calendar_events] Successfully created event: {event_data.get('id')}")
+                print(f"[create_calendar_events] ✅ Successfully created event {i+1}/{len(selected_slots)}")
+                print(f"[create_calendar_events]   - Event ID: {event_data.get('id', 'N/A')}")
+                print(f"[create_calendar_events]   - Time: {event_data.get('start', 'N/A')} to {event_data.get('end', 'N/A')}")
+                print(f"[create_calendar_events]   - Link: {event_data.get('htmlLink', 'N/A')}")
             else:
                 # Tool returned an error, log it but continue with other slots
                 error_msg = result.get("error", "Unknown error")
-                print(f"[create_calendar_events] Failed to create event: {error_msg}")
+                print(f"[create_calendar_events] ❌ Failed to create event {i+1}/{len(selected_slots)}: {error_msg}")
                 # In production, you might want to log this error
                 continue
                 
         except Exception as e:
             # If tool invocation fails, skip this slot and continue
-            print(f"[create_calendar_events] Exception while creating event: {str(e)}")
+            print(f"[create_calendar_events] ❌ Exception while creating event {i+1}/{len(selected_slots)}: {type(e).__name__}: {str(e)}")
             # In production, you might want to log this error
             continue
     
-    print(f"[create_calendar_events] Successfully created {len(created_events)} out of {len(selected_slots)} events")
+    print(f"[create_calendar_events] ===== CREATION SUMMARY =====")
+    print(f"[create_calendar_events] Successfully created: {len(created_events)} out of {len(selected_slots)} events")
+    if len(created_events) < len(selected_slots):
+        print(f"[create_calendar_events] ⚠️  {len(selected_slots) - len(created_events)} event(s) failed to create")
+    print(f"[create_calendar_events] ===== CREATE CALENDAR EVENTS END =====")
     return {"created_events": created_events}
