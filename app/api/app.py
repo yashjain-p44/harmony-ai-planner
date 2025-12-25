@@ -426,8 +426,9 @@ def chat():
                     messages.append(ToolMessage(content=content, tool_call_id=tool_call_id))
             
             # Check if the last message is already the user's prompt (frontend appended it)
-            # If not, append it for backward compatibility
-            if not messages or not isinstance(messages[-1], HumanMessage) or messages[-1].content != chat_request.prompt:
+            # If not, append it for backward compatibility (only if prompt is not empty)
+            # If approval_state is provided, we don't need to add a message for the prompt
+            if chat_request.prompt and (not messages or not isinstance(messages[-1], HumanMessage) or messages[-1].content != chat_request.prompt):
                 messages.append(HumanMessage(content=chat_request.prompt))
             
             initial_state = {
@@ -440,8 +441,12 @@ def chat():
                     initial_state[key] = value
         else:
             # New conversation
+            # Only add message if prompt is provided (not for approval-only requests)
+            messages = []
+            if chat_request.prompt:
+                messages = [HumanMessage(content=chat_request.prompt)]
             initial_state = {
-                "messages": [HumanMessage(content=chat_request.prompt)],
+                "messages": messages,
                 "needs_approval_from_human": False
             }
         
