@@ -20,6 +20,15 @@ export interface ChatResponse {
   approval_state?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CHANGES_REQUESTED';
   approval_summary?: ApprovalSummary;
   state?: AgentState;
+  created_events?: Array<{
+    id: string;
+    summary: string;
+    start: string;
+    end: string;
+    description?: string;
+    location?: string;
+    htmlLink?: string;
+  }>;
   error?: string;
 }
 
@@ -42,7 +51,9 @@ export interface ApprovalSummary {
   summary?: string;
   selected_slots?: any[];
   habit_name?: string;
+  task_name?: string;
   frequency?: string;
+  priority?: string;
   duration_minutes?: number;
   slots_summary?: Array<{
     slot_number: number;
@@ -437,6 +448,49 @@ export async function deleteTask(
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error'
     };
+  }
+}
+
+/**
+ * Schedule a task using AI
+ */
+export async function scheduleTask(
+  taskListId: string,
+  taskId: string,
+  approvalState?: 'APPROVED' | 'REJECTED' | 'CHANGES_REQUESTED',
+  approvalFeedback?: string,
+  state?: AgentState
+): Promise<ChatResponse> {
+  try {
+    const body: any = {};
+    if (approvalState !== undefined) {
+      body.approval_state = approvalState;
+    }
+    if (approvalFeedback !== undefined) {
+      body.approval_feedback = approvalFeedback;
+    }
+    if (state !== undefined) {
+      body.state = state;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/tasks/lists/${taskListId}/tasks/${taskId}/schedule`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error scheduling task:', error);
+    throw error;
   }
 }
 

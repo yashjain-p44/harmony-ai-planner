@@ -4,6 +4,7 @@ import { Dashboard } from './components/Dashboard';
 import { MonthlyGoals } from './components/MonthlyGoals';
 import { GoogleCalendarFlow } from './components/GoogleCalendarFlow';
 import { TaskManagement } from './components/TaskManagement';
+import { TaskSchedulingModal } from './components/TaskSchedulingModal';
 import { 
   fetchCalendarEvents, 
   checkAPIHealth, 
@@ -13,8 +14,10 @@ import {
   createTask as createGoogleTask,
   updateTask as updateGoogleTask,
   deleteTask as deleteGoogleTask,
+  scheduleTask,
   type GoogleTask,
-  type TaskList
+  type TaskList,
+  type ChatResponse
 } from './services/api';
 
 export type Category = 'work' | 'personal' | 'focus';
@@ -388,19 +391,31 @@ export default function App() {
     }
   };
 
+  const [schedulingTask, setSchedulingTask] = useState<Task | null>(null);
+
   const handleScheduleTask = (taskId: string) => {
-    // Simulate AI scheduling - in real app, this would use AI to find optimal time
-    const task = tasks.find(t => t.id === taskId);
-    if (task) {
-      const scheduledStart = new Date();
-      scheduledStart.setHours(9, 0, 0, 0);
-      scheduledStart.setDate(scheduledStart.getDate() + 1); // Tomorrow at 9 AM
-      
-      handleUpdateTask(taskId, {
-        scheduledStart,
-        scheduledEnd: new Date(scheduledStart.getTime() + task.duration * 60 * 60 * 1000),
-      });
+    try {
+      const task = tasks.find(t => t.id === taskId);
+      if (!task) {
+        console.error('Task not found:', taskId);
+        return;
+      }
+      if (!selectedTaskListId) {
+        console.error('No task list selected');
+        return;
+      }
+      setSchedulingTask(task);
+    } catch (error) {
+      console.error('Error in handleScheduleTask:', error);
     }
+  };
+
+  const handleScheduleComplete = (taskId: string, scheduledStart: Date, scheduledEnd: Date) => {
+    handleUpdateTask(taskId, {
+      scheduledStart,
+      scheduledEnd,
+    });
+    setSchedulingTask(null);
   };
 
   return (
@@ -460,6 +475,17 @@ export default function App() {
           />
         )}
       </main>
+
+      {/* Task Scheduling Modal */}
+      {schedulingTask && selectedTaskListId && (
+        <TaskSchedulingModal
+          task={schedulingTask}
+          taskListId={selectedTaskListId}
+          isOpen={!!schedulingTask}
+          onClose={() => setSchedulingTask(null)}
+          onScheduleComplete={handleScheduleComplete}
+        />
+      )}
     </div>
   );
 }

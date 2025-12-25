@@ -36,9 +36,10 @@ export function ApprovalBox({
   };
 
   const slots = summary.slots_summary || [];
-  const habitName = summary.habit_name || 'Scheduled Habit';
-  const frequency = summary.frequency || 'unknown';
+  const habitName = summary.habit_name || summary.task_name || 'Scheduled Item';
+  const frequency = summary.frequency || 'one-time';
   const duration = summary.duration_minutes || 30;
+  const priority = summary.priority;
 
   // Format date to be more readable
   const formatDate = (dateStr: string): string => {
@@ -79,7 +80,7 @@ export function ApprovalBox({
           📅 Schedule Approval Request
         </h4>
         <p className="text-sm text-gray-600 mb-3">
-          Ready to schedule <strong>{habitName}</strong> ({frequency}, {duration} min)
+          Ready to schedule <strong>{habitName}</strong> {priority && `(Priority: ${priority})`} ({duration} min)
         </p>
         
         {slots.length > 0 && (
