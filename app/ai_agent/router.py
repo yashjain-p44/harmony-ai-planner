@@ -39,3 +39,8 @@ def route_by_plan_status(state: AgentState) -> str:
 
 def route_by_execution_decision(state: AgentState) -> str:
     return state["execution_decision"]
+
+def route_by_approval_state(state: AgentState) -> str:
+    """Route based on approval state."""
+    approval_state = state.get("approval_state", "PENDING")
+    return approval_state

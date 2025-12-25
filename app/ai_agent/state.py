@@ -46,4 +46,14 @@ class AgentState(TypedDict):
     failure_reason: Annotated[Optional[str], "Machine-readable reason for failure"]
     explanation_payload: Annotated[Optional[dict], "Structured data for human-readable explanation"]
     needs_approval_from_human: Annotated[Optional[bool], "Whether the agent needs human approval before continuing"]
+    
+    # Approval flow
+    approval_state: Annotated[Optional[Literal[
+        "PENDING",
+        "APPROVED",
+        "REJECTED",
+        "CHANGES_REQUESTED",
+    ]], "Current state of approval for selected slots"]
+    approval_feedback: Annotated[Optional[str], "Feedback from approval (rejection reason or suggested changes)"]
+    
     # Tool calls and results are handled through messages (AIMessage with tool_calls, ToolMessage responses)

@@ -66,6 +66,48 @@ class GoogleCalendarRepository:
         credentials = self.auth_provider.get_credentials()
         self.service = build("calendar", "v3", credentials=credentials)
     
+    def _handle_auth_error(self, error: HttpError) -> None:
+        """Handle authentication errors by refreshing credentials."""
+        if error.resp.status in [401, 403]:
+            print(f"Authentication error ({error.resp.status}), attempting to refresh token...")
+            try:
+                self.auth_provider.refresh_credentials()
+                # Rebuild service with new credentials
+                credentials = self.auth_provider.get_credentials()
+                self.service = build("calendar", "v3", credentials=credentials)
+            except Exception as refresh_error:
+                print(f"Failed to refresh credentials: {refresh_error}")
+                raise
+    
+    def _execute_with_retry(self, api_call):
+        """
+        Execute an API call with automatic token refresh on auth errors.
+        
+        Args:
+            api_call: A callable that returns an API request object with .execute() method
+            
+        Returns:
+            Result of the API call
+            
+        Raises:
+            HttpError: If the API request fails after retry
+        """
+        try:
+            return api_call().execute()
+        except HttpError as error:
+            # Try to refresh token on auth errors
+            if error.resp.status in [401, 403]:
+                try:
+                    self._handle_auth_error(error)
+                    # Retry the request once
+                    return api_call().execute()
+                except Exception as retry_error:
+                    raise HttpError(
+                        resp=error.resp,
+                        content=f"API call failed after token refresh: {retry_error}".encode()
+                    )
+            raise
+    
     def list_events(
         self,
         calendar_id: str = "primary",
@@ -102,9 +144,8 @@ class GoogleCalendarRepository:
         time_max_str = time_max.isoformat() if time_max else None
         
         try:
-            events_result = (
-                self.service.events()
-                .list(
+            events_result = self._execute_with_retry(
+                lambda: self.service.events().list(
                     calendarId=calendar_id,
                     timeMin=time_min_str,
                     timeMax=time_max_str,
@@ -112,7 +153,6 @@ class GoogleCalendarRepository:
                     singleEvents=single_events,
                     orderBy=order_by,
                 )
-                .execute()
             )
             return events_result.get("items", [])
         except HttpError as error:
@@ -140,10 +180,8 @@ class GoogleCalendarRepository:
             HttpError: If the API request fails.
         """
         try:
-            event = (
-                self.service.events()
-                .get(calendarId=calendar_id, eventId=event_id)
-                .execute()
+            event = self._execute_with_retry(
+                lambda: self.service.events().get(calendarId=calendar_id, eventId=event_id)
             )
             return event
         except HttpError as error:
@@ -210,10 +248,8 @@ class GoogleCalendarRepository:
         event.update(kwargs)
         
         try:
-            created_event = (
-                self.service.events()
-                .insert(calendarId=calendar_id, body=event)
-                .execute()
+            created_event = self._execute_with_retry(
+                lambda: self.service.events().insert(calendarId=calendar_id, body=event)
             )
             return created_event
         except HttpError as error:
@@ -281,10 +317,8 @@ class GoogleCalendarRepository:
         event.update(kwargs)
         
         try:
-            updated_event = (
-                self.service.events()
-                .update(calendarId=calendar_id, eventId=event_id, body=event)
-                .execute()
+            updated_event = self._execute_with_retry(
+                lambda: self.service.events().update(calendarId=calendar_id, eventId=event_id, body=event)
             )
             return updated_event
         except HttpError as error:
@@ -309,9 +343,9 @@ class GoogleCalendarRepository:
             HttpError: If the API request fails.
         """
         try:
-            self.service.events().delete(
-                calendarId=calendar_id, eventId=event_id
-            ).execute()
+            self._execute_with_retry(
+                lambda: self.service.events().delete(calendarId=calendar_id, eventId=event_id)
+            )
         except HttpError as error:
             raise HttpError(
                 resp=error.resp,
@@ -329,7 +363,9 @@ class GoogleCalendarRepository:
             HttpError: If the API request fails.
         """
         try:
-            calendars_result = self.service.calendarList().list().execute()
+            calendars_result = self._execute_with_retry(
+                lambda: self.service.calendarList().list()
+            )
             return calendars_result.get("items", [])
         except HttpError as error:
             raise HttpError(
@@ -351,7 +387,9 @@ class GoogleCalendarRepository:
             HttpError: If the API request fails.
         """
         try:
-            calendar = self.service.calendars().get(calendarId=calendar_id).execute()
+            calendar = self._execute_with_retry(
+                lambda: self.service.calendars().get(calendarId=calendar_id)
+            )
             return calendar
         except HttpError as error:
             raise HttpError(

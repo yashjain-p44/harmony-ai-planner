@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, Send, X, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import type { Task, Category } from '../App';
-import { sendChatMessage, type AgentState, type ChatMessage as APIChatMessage } from '../services/api';
+import { sendChatMessage, type AgentState, type ChatMessage as APIChatMessage, type ApprovalSummary } from '../services/api';
+import { ApprovalBox } from './ApprovalBox';
 
 interface AIPanelProps {
   isOpen: boolean;
@@ -16,6 +17,7 @@ interface Message {
   role: 'user' | 'ai';
   content: string;
   taskPreview?: Partial<Task>;
+  approvalSummary?: ApprovalSummary;
 }
 
 export function AIPanel({ isOpen, onToggle, onAddTask }: AIPanelProps) {
@@ -102,6 +104,8 @@ export function AIPanel({ isOpen, onToggle, onAddTask }: AIPanelProps) {
         state: agentState || undefined,
       });
 
+      console.log('Chat response received:', response);
+
       if (response.success) {
         // Update agent state for conversation continuity
         if (response.state) {
@@ -109,29 +113,21 @@ export function AIPanel({ isOpen, onToggle, onAddTask }: AIPanelProps) {
         }
 
         // Add AI response to messages
+        // Use response.response if available, otherwise use a default message
+        const responseContent = response.response || 
+          (response.approval_state === 'PENDING' 
+            ? 'I found some time slots for you. Please review and approve below.' 
+            : 'Processing your request...');
+        
         const aiMessage: Message = {
           id: (Date.now() + 1).toString(),
           role: 'ai',
-          content: response.response,
+          content: responseContent,
+          approvalSummary: response.approval_state === 'PENDING' ? response.approval_summary : undefined,
         };
         setMessages((prev) => [...prev, aiMessage]);
 
-        // Try to parse task from the AI response if it mentions scheduling
-        if (response.response.toLowerCase().includes('schedule') || 
-            response.response.toLowerCase().includes('created') ||
-            response.response.toLowerCase().includes('added')) {
-          const parsedTask = parseTaskFromMessage(input);
-          if (parsedTask) {
-            setPendingTask(parsedTask);
-            const taskPreviewMessage: Message = {
-              id: (Date.now() + 2).toString(),
-              role: 'ai',
-              content: "Here's what I understood from your request:",
-              taskPreview: parsedTask,
-            };
-            setMessages((prev) => [...prev, taskPreviewMessage]);
-          }
-        }
+        // Note: Task preview logic removed - approval flow handles scheduling UI
       } else {
         // Handle error
         const errorMessage: Message = {
@@ -178,6 +174,59 @@ export function AIPanel({ isOpen, onToggle, onAddTask }: AIPanelProps) {
       };
       setMessages((prev) => [...prev, successMessage]);
     }, 300);
+  };
+
+  const handleApproval = async (
+    approvalState: 'APPROVED' | 'REJECTED' | 'CHANGES_REQUESTED',
+    feedback?: string
+  ) => {
+    if (!agentState) return;
+
+    setIsLoading(true);
+    try {
+      const response = await sendChatMessage({
+        prompt: '', // Empty prompt for approval-only request
+        state: agentState,
+        approval_state: approvalState,
+        approval_feedback: feedback,
+      });
+
+      if (response.success) {
+        // Update agent state
+        if (response.state) {
+          setAgentState(response.state);
+        }
+
+        // Add AI response to messages
+        const aiMessage: Message = {
+          id: Date.now().toString(),
+          role: 'ai',
+          content: response.response || (approvalState === 'APPROVED' 
+            ? '✅ Approved! Scheduling events...' 
+            : approvalState === 'REJECTED'
+            ? '❌ Scheduling cancelled.'
+            : '📝 Changes noted. Processing...'),
+        };
+        setMessages((prev) => [...prev, aiMessage]);
+      } else {
+        const errorMessage: Message = {
+          id: Date.now().toString(),
+          role: 'ai',
+          content: `Sorry, I encountered an error: ${response.error || 'Unknown error'}. Please try again.`,
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+      }
+    } catch (error) {
+      console.error('Error handling approval:', error);
+      const errorMessage: Message = {
+        id: Date.now().toString(),
+        role: 'ai',
+        content: 'Sorry, I had trouble processing your approval. Please try again.',
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -293,6 +342,17 @@ export function AIPanel({ isOpen, onToggle, onAddTask }: AIPanelProps) {
                       onConfirm={() => handleConfirmTask(message.taskPreview!)}
                     />
                   </motion.div>
+                )}
+
+                {/* Approval Box */}
+                {message.approvalSummary && (
+                  <ApprovalBox
+                    summary={message.approvalSummary}
+                    onApprove={() => handleApproval('APPROVED')}
+                    onReject={() => handleApproval('REJECTED')}
+                    onSuggestChanges={(feedback) => handleApproval('CHANGES_REQUESTED', feedback)}
+                    isLoading={isLoading}
+                  />
                 )}
               </div>
             </motion.div>
