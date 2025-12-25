@@ -149,3 +149,87 @@ export async function sendChatMessage(request: ChatRequest): Promise<ChatRespons
   return data;
 }
 
+export interface StreamUpdate {
+  type: 'progress' | 'complete' | 'error';
+  node?: string;
+  description?: string;
+  response?: ChatResponse;
+  error?: string;
+}
+
+/**
+ * Send a chat message to the AI agent with streaming updates
+ * @param request Chat request
+ * @param onUpdate Callback for each stream update
+ * @returns Promise that resolves with the final response
+ */
+export async function sendChatMessageStream(
+  request: ChatRequest,
+  onUpdate: (update: StreamUpdate) => void
+): Promise<ChatResponse> {
+  console.log('Sending streaming chat request:', request);
+  
+  const response = await fetch(`${API_BASE_URL}/chat/stream`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(request),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('HTTP error response:', response.status, errorText);
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
+  if (!response.body) {
+    throw new Error('Response body is null');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  let finalResponse: ChatResponse | null = null;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      
+      if (done) {
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            onUpdate(data);
+            
+            if (data.type === 'complete' && data.response) {
+              finalResponse = data.response;
+            } else if (data.type === 'error') {
+              throw new Error(data.error || 'Unknown error');
+            }
+          } catch (e) {
+            console.error('Error parsing SSE data:', e, line);
+          }
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  if (!finalResponse) {
+    throw new Error('No final response received from stream');
+  }
+
+  return finalResponse;
+}
+
