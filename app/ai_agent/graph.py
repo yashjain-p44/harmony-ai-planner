@@ -1,4 +1,17 @@
-"""Graph construction and configuration for LangGraph agents."""
+"""
+Graph construction and configuration for LangGraph agents.
+
+This module defines the complete agent workflow as a state machine using LangGraph.
+The agent processes user requests through multiple stages:
+1. Intent classification
+2. Planning (for habits)
+3. Execution decision
+4. Calendar fetching and slot computation
+5. Approval workflow
+6. Event creation
+
+The graph uses conditional routing to handle different user intents and approval states.
+"""
 
 from langgraph.graph import StateGraph, END
 
@@ -12,8 +25,27 @@ def create_agent():
     """
     Create and compile a LangGraph agent with tool support.
     
+    The agent workflow:
+    1. Entry: intent_classifier - Determines user intent
+    2. Routing by intent:
+       - HABIT_SCHEDULE → habit_planner
+       - TASK_SCHEDULE → END (placeholder for future implementation)
+       - CALENDAR_ANALYSIS → END (placeholder for future implementation)
+       - UNKNOWN → clarification_agent
+    3. For habits: habit_planner → execution_decider (via plan_status routing)
+    4. Execution decision routing:
+       - EXECUTE → fetch_calendar_events → ... → create_calendar_events
+       - DRY_RUN → explanation_agent
+       - CANCEL → END
+    5. Approval workflow: approval_node → create_calendar_events (if approved)
+    6. Final: post_schedule_summary → END
+    
     Returns:
-        Compiled StateGraph ready to use
+        Compiled StateGraph ready to use for processing agent requests.
+        
+    Example:
+        >>> agent = create_agent()
+        >>> result = agent.invoke({"messages": [HumanMessage(content="Schedule daily exercise")]})
     """
     # Create the graph
     graph = StateGraph(AgentState)

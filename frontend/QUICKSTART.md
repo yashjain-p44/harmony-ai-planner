@@ -1,12 +1,12 @@
 # Quick Start Guide
 
-Get the Figma frontend up and running in 3 simple steps!
+Get the frontend up and running in 3 simple steps!
 
 ## 🚀 Quick Start
 
 ```bash
-# 1. Navigate to the figma-frontend directory
-cd figma-frontend
+# 1. Navigate to the frontend directory
+cd frontend
 
 # 2. Install dependencies (if not already done)
 npm install
