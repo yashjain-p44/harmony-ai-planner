@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, Send, X, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import type { Task, Category } from '../App';
-import { sendChatMessage, type AgentState, type ChatMessage as APIChatMessage, type ApprovalSummary } from '../services/api';
+import { sendChatMessage, sendChatMessageStream, type AgentState, type ChatMessage as APIChatMessage, type ApprovalSummary, type StreamUpdate } from '../services/api';
 import { ApprovalBox } from './ApprovalBox';
 
 interface AIPanelProps {
@@ -32,6 +32,7 @@ export function AIPanel({ isOpen, onToggle, onAddTask }: AIPanelProps) {
   const [pendingTask, setPendingTask] = useState<Partial<Task> | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [agentState, setAgentState] = useState<AgentState | null>(null);
+  const [progressMessage, setProgressMessage] = useState<string | null>(null);
 
   const parseTaskFromMessage = (message: string): Partial<Task> | null => {
     const categories: Record<string, Category> = {
@@ -94,15 +95,48 @@ export function AIPanel({ isOpen, onToggle, onAddTask }: AIPanelProps) {
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    const userInput = input;
     setInput('');
     setIsLoading(true);
+    setProgressMessage(null);
+
+    // Create a placeholder AI message that will be updated with final response
+    // We don't show its content while loading - only the loading indicator shows progress
+    const progressMessageId = (Date.now() + 1).toString();
+    const progressAiMessage: Message = {
+      id: progressMessageId,
+      role: 'ai',
+      content: '', // Empty content - we'll show progress in the loading indicator instead
+    };
+    setMessages((prev) => [...prev, progressAiMessage]);
 
     try {
-      // Send message to backend AI agent
-      const response = await sendChatMessage({
-        prompt: input,
-        state: agentState || undefined,
-      });
+      // Send message to backend AI agent with streaming
+      const response = await sendChatMessageStream(
+        {
+          prompt: userInput,
+          state: agentState || undefined,
+        },
+        (update: StreamUpdate) => {
+          if (update.type === 'progress' && update.description) {
+            // Update progress message (only in the loading indicator, not in the message content)
+            setProgressMessage(update.description);
+          } else if (update.type === 'error') {
+            // Handle error
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === progressMessageId
+                  ? {
+                      ...msg,
+                      content: `Sorry, I encountered an error: ${update.error || 'Unknown error'}. Please try again.`,
+                    }
+                  : msg
+              )
+            );
+            setProgressMessage(null);
+          }
+        }
+      );
 
       console.log('Chat response received:', response);
 
@@ -112,39 +146,51 @@ export function AIPanel({ isOpen, onToggle, onAddTask }: AIPanelProps) {
           setAgentState(response.state);
         }
 
-        // Add AI response to messages
-        // Use response.response if available, otherwise use a default message
+        // Update the progress message with the final response
         const responseContent = response.response || 
           (response.approval_state === 'PENDING' 
             ? 'I found some time slots for you. Please review and approve below.' 
-            : 'Processing your request...');
+            : 'Request processed.');
         
-        const aiMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: 'ai',
-          content: responseContent,
-          approvalSummary: response.approval_state === 'PENDING' ? response.approval_summary : undefined,
-        };
-        setMessages((prev) => [...prev, aiMessage]);
-
-        // Note: Task preview logic removed - approval flow handles scheduling UI
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === progressMessageId
+              ? {
+                  ...msg,
+                  content: responseContent,
+                  approvalSummary: response.approval_state === 'PENDING' ? response.approval_summary : undefined,
+                }
+              : msg
+          )
+        );
+        setProgressMessage(null);
       } else {
         // Handle error
-        const errorMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: 'ai',
-          content: `Sorry, I encountered an error: ${response.error || 'Unknown error'}. Please try again.`,
-        };
-        setMessages((prev) => [...prev, errorMessage]);
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === progressMessageId
+              ? {
+                  ...msg,
+                  content: `Sorry, I encountered an error: ${response.error || 'Unknown error'}. Please try again.`,
+                }
+              : msg
+          )
+        );
+        setProgressMessage(null);
       }
     } catch (error) {
       console.error('Error sending message:', error);
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'ai',
-        content: 'Sorry, I had trouble connecting to the server. Please make sure the backend is running and try again.',
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === progressMessageId
+            ? {
+                ...msg,
+                content: 'Sorry, I had trouble connecting to the server. Please make sure the backend is running and try again.',
+              }
+            : msg
+        )
+      );
+      setProgressMessage(null);
     } finally {
       setIsLoading(false);
     }
@@ -183,13 +229,45 @@ export function AIPanel({ isOpen, onToggle, onAddTask }: AIPanelProps) {
     if (!agentState) return;
 
     setIsLoading(true);
+    setProgressMessage(null);
+
+    // Create a placeholder AI message for final response
+    // We don't show its content while loading - only the loading indicator shows progress
+    const progressMessageId = Date.now().toString();
+    const progressAiMessage: Message = {
+      id: progressMessageId,
+      role: 'ai',
+      content: '', // Empty content - we'll show progress in the loading indicator instead
+    };
+    setMessages((prev) => [...prev, progressAiMessage]);
+
     try {
-      const response = await sendChatMessage({
-        prompt: '', // Empty prompt for approval-only request
-        state: agentState,
-        approval_state: approvalState,
-        approval_feedback: feedback,
-      });
+      const response = await sendChatMessageStream(
+        {
+          prompt: '', // Empty prompt for approval-only request
+          state: agentState,
+          approval_state: approvalState,
+          approval_feedback: feedback,
+        },
+        (update: StreamUpdate) => {
+          if (update.type === 'progress' && update.description) {
+            // Update progress message (only in the loading indicator, not in the message content)
+            setProgressMessage(update.description);
+          } else if (update.type === 'error') {
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === progressMessageId
+                  ? {
+                      ...msg,
+                      content: `Sorry, I encountered an error: ${update.error || 'Unknown error'}. Please try again.`,
+                    }
+                  : msg
+              )
+            );
+            setProgressMessage(null);
+          }
+        }
+      );
 
       if (response.success) {
         // Update agent state
@@ -197,33 +275,51 @@ export function AIPanel({ isOpen, onToggle, onAddTask }: AIPanelProps) {
           setAgentState(response.state);
         }
 
-        // Add AI response to messages
-        const aiMessage: Message = {
-          id: Date.now().toString(),
-          role: 'ai',
-          content: response.response || (approvalState === 'APPROVED' 
-            ? '✅ Approved! Scheduling events...' 
-            : approvalState === 'REJECTED'
-            ? '❌ Scheduling cancelled.'
-            : '📝 Changes noted. Processing...'),
-        };
-        setMessages((prev) => [...prev, aiMessage]);
+        // Update the progress message with the final response
+        const responseContent = response.response || (approvalState === 'APPROVED' 
+          ? '✅ Approved! Scheduling events...' 
+          : approvalState === 'REJECTED'
+          ? '❌ Scheduling cancelled.'
+          : '📝 Changes noted. Processing...');
+        
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === progressMessageId
+              ? {
+                  ...msg,
+                  content: responseContent,
+                  approvalSummary: response.approval_state === 'PENDING' ? response.approval_summary : undefined,
+                }
+              : msg
+          )
+        );
+        setProgressMessage(null);
       } else {
-        const errorMessage: Message = {
-          id: Date.now().toString(),
-          role: 'ai',
-          content: `Sorry, I encountered an error: ${response.error || 'Unknown error'}. Please try again.`,
-        };
-        setMessages((prev) => [...prev, errorMessage]);
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === progressMessageId
+              ? {
+                  ...msg,
+                  content: `Sorry, I encountered an error: ${response.error || 'Unknown error'}. Please try again.`,
+                }
+              : msg
+          )
+        );
+        setProgressMessage(null);
       }
     } catch (error) {
       console.error('Error handling approval:', error);
-      const errorMessage: Message = {
-        id: Date.now().toString(),
-        role: 'ai',
-        content: 'Sorry, I had trouble processing your approval. Please try again.',
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === progressMessageId
+            ? {
+                ...msg,
+                content: 'Sorry, I had trouble processing your approval. Please try again.',
+              }
+            : msg
+        )
+      );
+      setProgressMessage(null);
     } finally {
       setIsLoading(false);
     }
@@ -293,7 +389,13 @@ export function AIPanel({ isOpen, onToggle, onAddTask }: AIPanelProps) {
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-gradient-to-b from-white/30 to-white/10">
-          {messages.map((message) => (
+          {messages.map((message) => {
+            // Don't render message bubble if content is empty (placeholder for loading)
+            if (!message.content && isLoading) {
+              return null;
+            }
+            
+            return (
             <motion.div
               key={message.id}
               initial={{ opacity: 0, y: 10 }}
@@ -356,15 +458,17 @@ export function AIPanel({ isOpen, onToggle, onAddTask }: AIPanelProps) {
                 )}
               </div>
             </motion.div>
-          ))}
-          {isLoading && (
+            );
+          })}
+          {isLoading && progressMessage && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               className="flex justify-start"
             >
-              <div className="bg-white/90 border border-gray-200 rounded-2xl p-4 shadow-sm">
-                <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
+              <div className="bg-white/90 border border-gray-200 rounded-2xl p-4 shadow-sm flex items-center gap-3">
+                <Loader2 className="w-5 h-5 text-blue-500 animate-spin flex-shrink-0" />
+                <span className="text-sm text-gray-600">{progressMessage}</span>
               </div>
             </motion.div>
           )}
