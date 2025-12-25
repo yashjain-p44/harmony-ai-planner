@@ -4,7 +4,18 @@ import { Dashboard } from './components/Dashboard';
 import { MonthlyGoals } from './components/MonthlyGoals';
 import { GoogleCalendarFlow } from './components/GoogleCalendarFlow';
 import { TaskManagement } from './components/TaskManagement';
-import { fetchCalendarEvents, checkAPIHealth, type CalendarEvent } from './services/api';
+import { 
+  fetchCalendarEvents, 
+  checkAPIHealth, 
+  type CalendarEvent,
+  fetchTasks,
+  fetchTaskLists,
+  createTask as createGoogleTask,
+  updateTask as updateGoogleTask,
+  deleteTask as deleteGoogleTask,
+  type GoogleTask,
+  type TaskList
+} from './services/api';
 
 export type Category = 'work' | 'personal' | 'focus';
 
@@ -53,6 +64,77 @@ function convertCalendarEventToTask(event: CalendarEvent): Task {
   };
 }
 
+// Helper function to convert Google Task to frontend Task
+function convertGoogleTaskToTask(googleTask: GoogleTask): Task {
+  // Try to infer category from title or notes
+  let category: Category = 'work';
+  const text = `${googleTask.title} ${googleTask.notes || ''}`.toLowerCase();
+  if (text.includes('personal') || text.includes('home')) {
+    category = 'personal';
+  } else if (text.includes('focus') || text.includes('deep work')) {
+    category = 'focus';
+  }
+
+  // Parse due date if available
+  let deadline: Date | undefined;
+  if (googleTask.due) {
+    deadline = new Date(googleTask.due);
+  }
+
+  // Default duration to 1 hour if not specified
+  const duration = 1;
+
+  return {
+    id: googleTask.id,
+    title: googleTask.title,
+    category,
+    duration,
+    deadline,
+    notes: googleTask.notes,
+    // Mark as scheduled if task is completed
+    scheduledStart: googleTask.status === 'completed' ? new Date() : undefined,
+    // Store Google Task metadata
+    isFromGoogleCalendar: false,
+  };
+}
+
+// Helper function to convert frontend Task to Google Task format
+function convertTaskToGoogleTask(task: Partial<Task>): {
+  title: string;
+  notes?: string;
+  due?: string;
+  status?: 'needsAction' | 'completed';
+} {
+  const googleTask: {
+    title: string;
+    notes?: string;
+    due?: string;
+    status?: 'needsAction' | 'completed';
+  } = {
+    title: task.title || '',
+  };
+
+  if (task.notes) {
+    googleTask.notes = task.notes;
+  }
+
+  if (task.deadline) {
+    // Convert Date to RFC3339 format
+    googleTask.due = new Date(task.deadline).toISOString();
+  }
+
+  // Determine status: if task has scheduledEnd in the past, mark as completed
+  // Otherwise, check if there's an explicit status or default to needsAction
+  if (task.scheduledEnd && new Date(task.scheduledEnd) < new Date()) {
+    googleTask.status = 'completed';
+  } else {
+    // Default to needsAction for new/active tasks
+    googleTask.status = 'needsAction';
+  }
+
+  return googleTask;
+}
+
 export default function App() {
   const [currentFlow, setCurrentFlow] = useState<'onboarding' | 'dashboard' | 'goals' | 'google-calendar' | 'task-management'>('onboarding');
   const [preferences, setPreferences] = useState<UserPreferences | null>(null);
@@ -61,6 +143,8 @@ export default function App() {
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [isLoadingCalendar, setIsLoadingCalendar] = useState(false);
   const [apiHealthy, setApiHealthy] = useState(false);
+  const [selectedTaskListId, setSelectedTaskListId] = useState<string>('@default');
+  const [taskLists, setTaskLists] = useState<TaskList[]>([]);
 
   const handleOnboardingComplete = (prefs: UserPreferences) => {
     setPreferences(prefs);
@@ -129,6 +213,85 @@ export default function App() {
     }
   };
 
+  // Load task lists
+  const loadTaskLists = async () => {
+    try {
+      const response = await fetchTaskLists();
+      console.log('Task lists response:', response);
+      if (response.success && response.task_lists) {
+        setTaskLists(response.task_lists);
+        // Set default task list if not already set or if current selection is invalid
+        if (selectedTaskListId === '@default' || !response.task_lists.find(tl => tl.id === selectedTaskListId)) {
+          const defaultList = response.task_lists.find(tl => tl.id === '@default') || response.task_lists[0];
+          if (defaultList) {
+            setSelectedTaskListId(defaultList.id);
+          }
+        }
+      } else {
+        console.error('Failed to load task lists:', response.error);
+        // Set a default task list even if API fails
+        if (taskLists.length === 0) {
+          setTaskLists([{ id: '@default', title: 'My Tasks' }]);
+          setSelectedTaskListId('@default');
+        }
+      }
+    } catch (error) {
+      console.error('Error loading task lists:', error);
+      // Set a default task list even if API fails
+      if (taskLists.length === 0) {
+        setTaskLists([{ id: '@default', title: 'My Tasks' }]);
+        setSelectedTaskListId('@default');
+      }
+    }
+  };
+
+  // Load Google Tasks
+  const loadGoogleTasks = async (taskListId?: string) => {
+    const listId = taskListId || selectedTaskListId;
+    try {
+      const response = await fetchTasks(listId, {
+        show_completed: false,
+        max_results: 100,
+      });
+
+      if (response.success && response.tasks) {
+        // Convert Google Tasks to frontend Task format
+        const googleTasks = response.tasks.map(convertGoogleTaskToTask);
+        
+        // Merge with existing tasks, keeping calendar tasks
+        setTasks(prevTasks => [
+          ...prevTasks.filter(t => t.isFromGoogleCalendar),
+          ...googleTasks,
+        ]);
+      }
+    } catch (error) {
+      console.error('Error loading Google Tasks:', error);
+    }
+  };
+
+  // Load task lists and tasks on mount and when navigating to task management
+  useEffect(() => {
+    if (currentFlow === 'task-management') {
+      // Always load task lists when entering task management
+      loadTaskLists().then(() => {
+        // Tasks will be loaded by the selectedTaskListId effect or here
+        if (selectedTaskListId) {
+          loadGoogleTasks(selectedTaskListId);
+        }
+      });
+    } else if (currentFlow === 'dashboard') {
+      loadGoogleTasks(selectedTaskListId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentFlow]);
+
+  // Reload tasks when task list changes (only in task-management view)
+  useEffect(() => {
+    if (currentFlow === 'task-management' && selectedTaskListId && taskLists.length > 0) {
+      loadGoogleTasks(selectedTaskListId);
+    }
+  }, [selectedTaskListId, currentFlow]);
+
   // Load calendar events when calendar is connected
   useEffect(() => {
     if (isCalendarConnected && currentFlow === 'dashboard') {
@@ -136,16 +299,93 @@ export default function App() {
     }
   }, [isCalendarConnected, currentFlow]);
 
-  const handleAddTask = (task: Task) => {
-    setTasks([...tasks, task]);
+  const handleAddTask = async (task: Task) => {
+    try {
+      // Convert to Google Task format
+      const googleTaskData = convertTaskToGoogleTask(task);
+      
+      // Create task in Google Tasks
+      const response = await createGoogleTask(selectedTaskListId, googleTaskData);
+      
+      if (response.success && response.task) {
+        // Convert back to frontend format and add to state
+        const newTask = convertGoogleTaskToTask(response.task);
+        setTasks([...tasks, newTask]);
+      } else {
+        console.error('Failed to create task:', response.error);
+        // Still add to local state as fallback
+        setTasks([...tasks, task]);
+      }
+    } catch (error) {
+      console.error('Error creating task:', error);
+      // Fallback: add to local state
+      setTasks([...tasks, task]);
+    }
   };
 
-  const handleUpdateTask = (taskId: string, updates: Partial<Task>) => {
-    setTasks(tasks.map(t => t.id === taskId ? { ...t, ...updates } : t));
+  const handleUpdateTask = async (taskId: string, updates: Partial<Task>) => {
+    try {
+      // Find the task to get its Google Task ID
+      const task = tasks.find(t => t.id === taskId);
+      if (!task) return;
+
+      // Skip if it's a calendar event (those are managed separately)
+      if (task.isFromGoogleCalendar) {
+        setTasks(tasks.map(t => t.id === taskId ? { ...t, ...updates } : t));
+        return;
+      }
+
+      // Convert updates to Google Task format
+      const updatedTask = { ...task, ...updates };
+      const googleTaskData = convertTaskToGoogleTask(updatedTask);
+      
+      // Update task in Google Tasks
+      const response = await updateGoogleTask(selectedTaskListId, taskId, googleTaskData);
+      
+      if (response.success && response.task) {
+        // Convert back to frontend format and update state
+        const updatedGoogleTask = convertGoogleTaskToTask(response.task);
+        setTasks(tasks.map(t => t.id === taskId ? updatedGoogleTask : t));
+      } else {
+        console.error('Failed to update task:', response.error);
+        // Fallback: update local state
+        setTasks(tasks.map(t => t.id === taskId ? { ...t, ...updates } : t));
+      }
+    } catch (error) {
+      console.error('Error updating task:', error);
+      // Fallback: update local state
+      setTasks(tasks.map(t => t.id === taskId ? { ...t, ...updates } : t));
+    }
   };
 
-  const handleDeleteTask = (taskId: string) => {
-    setTasks(tasks.filter(t => t.id !== taskId));
+  const handleDeleteTask = async (taskId: string) => {
+    try {
+      // Find the task to check if it's a Google Task
+      const task = tasks.find(t => t.id === taskId);
+      if (!task) return;
+
+      // Skip if it's a calendar event (those are managed separately)
+      if (task.isFromGoogleCalendar) {
+        setTasks(tasks.filter(t => t.id !== taskId));
+        return;
+      }
+
+      // Delete task from Google Tasks
+      const response = await deleteGoogleTask(selectedTaskListId, taskId);
+      
+      if (response.success) {
+        // Remove from local state
+        setTasks(tasks.filter(t => t.id !== taskId));
+      } else {
+        console.error('Failed to delete task:', response.error);
+        // Fallback: remove from local state
+        setTasks(tasks.filter(t => t.id !== taskId));
+      }
+    } catch (error) {
+      console.error('Error deleting task:', error);
+      // Fallback: remove from local state
+      setTasks(tasks.filter(t => t.id !== taskId));
+    }
   };
 
   const handleScheduleTask = (taskId: string) => {
@@ -205,12 +445,18 @@ export default function App() {
         )}
         {currentFlow === 'task-management' && (
           <TaskManagement
-            tasks={tasks}
+            tasks={tasks.filter(t => !t.isFromGoogleCalendar)}
+            taskLists={taskLists}
+            selectedTaskListId={selectedTaskListId}
+            onTaskListChange={(taskListId: string) => {
+              setSelectedTaskListId(taskListId);
+            }}
             onBack={() => setCurrentFlow('dashboard')}
-            onAddTask={() => setShowTaskForm(true)}
+            onAddTask={handleAddTask}
             onUpdateTask={handleUpdateTask}
             onDeleteTask={handleDeleteTask}
             onScheduleTask={handleScheduleTask}
+            onRefreshTasks={() => loadGoogleTasks(selectedTaskListId)}
           />
         )}
       </main>
