@@ -41,6 +41,8 @@ Respond with a JSON object containing:
         "habit_name": "string",
         "frequency": "daily/weekly/etc",
         "duration_minutes": number,
+        "max_duration_minutes": number (optional, maximum duration for the habit session, default to 60 if not specified),
+        "buffer_minutes": number (optional, minimum gap between consecutive events for this habit, default to 15 if not specified),
         "description": "string"
     },
     "plan_status": "PLAN_READY" | "NEEDS_CLARIFICATION" | "PLAN_INFEASIBLE",
@@ -48,7 +50,9 @@ Respond with a JSON object containing:
 }
 
 If information is missing or unclear, set plan_status to NEEDS_CLARIFICATION and provide clarification_questions.
-If the request is impossible or contradictory, set plan_status to PLAN_INFEASIBLE."""
+If the request is impossible or contradictory, set plan_status to PLAN_INFEASIBLE.
+If max_duration_minutes is not specified by the user, set it to 60.
+If buffer_minutes is not specified by the user, set it to 15."""
     
     prompt = f"{system_prompt}\n\nUser request: {user_message}\n\nResponse (JSON only):"
     
@@ -68,6 +72,14 @@ If the request is impossible or contradictory, set plan_status to PLAN_INFEASIBL
         plan = plan_data.get("plan", {})
         plan_status = plan_data.get("plan_status", "PLAN_INFEASIBLE")
         clarification_questions = plan_data.get("clarification_questions", [])
+        
+        # Set default max_duration_minutes to 60 if not provided
+        if "max_duration_minutes" not in plan:
+            plan["max_duration_minutes"] = 60
+        
+        # Set default buffer_minutes to 15 if not provided
+        if "buffer_minutes" not in plan:
+            plan["buffer_minutes"] = 15
         
         result = {
             "habit_definition": plan,  # Store plan in habit_definition
