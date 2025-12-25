@@ -66,7 +66,7 @@ def select_slots(state: AgentState) -> AgentState:
             if time_diff < 20:
                 continue
         
-        # Ensure slot is long enough
+        # Ensure slot is long enough (filter_slots already caps duration, but double-check)
         if slot.get("duration_minutes", 0) >= required_duration_minutes:
             selected_slots.append(slot)
             last_selected_time = slot_start

@@ -77,10 +77,22 @@ def filter_slots(state: AgentState) -> AgentState:
                 continue
         
         # Slot passes all filters
-        candidate_slots.append({
-            **slot,
+        # Cap the slot duration to the required duration to prevent excessive durations
+        slot_end_capped = slot_start + timedelta(minutes=required_duration_minutes)
+        
+        candidate_slot = {
+            "start": slot_start.isoformat(),
+            "end": slot_end_capped.isoformat(),
+            "duration_minutes": required_duration_minutes,
             "meets_constraints": True
-        })
+        }
+        
+        # Preserve any additional metadata from the original slot
+        for key in slot:
+            if key not in ["start", "end", "duration_minutes"]:
+                candidate_slot[key] = slot[key]
+        
+        candidate_slots.append(candidate_slot)
     
     print(f"[filter_slots] Filtered {len(candidate_slots)} candidate slots from {len(free_slots)} free slots")
     return {"filtered_slots": candidate_slots}
