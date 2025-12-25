@@ -43,6 +43,7 @@ Respond with a JSON object containing:
         "duration_minutes": number,
         "max_duration_minutes": number (optional, maximum duration for the habit session, default to 60 if not specified),
         "buffer_minutes": number (optional, minimum gap between consecutive events for this habit, default to 15 if not specified),
+        "num_occurrences": number (optional, total number of events to schedule. For example: "2 weeks" with daily frequency = 14, "1 month" with weekly frequency = 4. If not specified, defaults based on frequency: daily=7, weekly=1, twice_weekly=2),
         "description": "string"
     },
     "plan_status": "PLAN_READY" | "NEEDS_CLARIFICATION" | "PLAN_INFEASIBLE",
@@ -52,7 +53,8 @@ Respond with a JSON object containing:
 If information is missing or unclear, set plan_status to NEEDS_CLARIFICATION and provide clarification_questions.
 If the request is impossible or contradictory, set plan_status to PLAN_INFEASIBLE.
 If max_duration_minutes is not specified by the user, set it to 60.
-If buffer_minutes is not specified by the user, set it to 15."""
+If buffer_minutes is not specified by the user, set it to 15.
+Extract num_occurrences from user requests like "for 2 weeks", "for 1 month", "for 10 days", etc. If the user says "schedule daily for 2 weeks", set num_occurrences to 14 (2 weeks × 7 days)."""
     
     prompt = f"{system_prompt}\n\nUser request: {user_message}\n\nResponse (JSON only):"
     
@@ -80,6 +82,18 @@ If buffer_minutes is not specified by the user, set it to 15."""
         # Set default buffer_minutes to 15 if not provided
         if "buffer_minutes" not in plan:
             plan["buffer_minutes"] = 15
+        
+        # Set default num_occurrences based on frequency if not provided
+        if "num_occurrences" not in plan:
+            frequency = plan.get("frequency", "daily")
+            if frequency == "daily":
+                plan["num_occurrences"] = 7  # Default to 1 week
+            elif frequency == "weekly":
+                plan["num_occurrences"] = 1  # Default to 1 occurrence
+            elif frequency == "twice_weekly":
+                plan["num_occurrences"] = 2  # Default to 2 occurrences
+            else:
+                plan["num_occurrences"] = 1  # Default fallback
         
         result = {
             "habit_definition": plan,  # Store plan in habit_definition
