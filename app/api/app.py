@@ -9,11 +9,13 @@ import sys
 import os
 from pathlib import Path
 from datetime import datetime
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response, stream_with_context
 from flask_cors import CORS
 from dotenv import load_dotenv
 from flasgger import Swagger
 from googleapiclient.errors import HttpError
+import json
+import time
 
 # Add project root to path for ai_agent imports
 project_root = os.path.join(os.path.dirname(__file__), '..', '..')
@@ -625,6 +627,216 @@ def chat():
             state=None,
             error=f"Internal server error: {str(e)}"
         ).model_dump()), 500
+
+
+@app.route('/chat/stream', methods=['POST'])
+def chat_stream():
+    """
+    Stream chat updates from the AI agent using Server-Sent Events (SSE).
+    
+    This endpoint streams progress updates as the agent processes the request,
+    allowing the frontend to show real-time status updates.
+    """
+    def generate():
+        try:
+            # Get JSON data from request
+            data = request.get_json()
+            
+            if not data:
+                yield f"data: {json.dumps({'type': 'error', 'error': 'No JSON data provided'})}\n\n"
+                return
+            
+            # Validate request using Pydantic model
+            try:
+                chat_request = ChatRequest(**data)
+            except ValidationError as e:
+                errors = []
+                for error in e.errors():
+                    field = " -> ".join(str(loc) for loc in error["loc"])
+                    message = error["msg"]
+                    errors.append(f"{field}: {message}")
+                
+                error_msg = "; ".join(errors)
+                yield f"data: {json.dumps({'type': 'error', 'error': f'Validation error: {error_msg}'})}\n\n"
+                return
+            
+            # Run the agent and get full state
+            app = create_agent()
+            
+            # Prepare initial state - either resume from provided state or create new
+            if chat_request.state:
+                # Resume from previous state
+                messages = []
+                for msg_dict in chat_request.state.get("messages", []):
+                    msg_type = msg_dict.get("type", "")
+                    content = msg_dict.get("content", "")
+                    
+                    if msg_type == "HumanMessage":
+                        messages.append(HumanMessage(content=content))
+                    elif msg_type == "AIMessage":
+                        msg = AIMessage(content=content)
+                        if "tool_calls" in msg_dict:
+                            msg.tool_calls = msg_dict["tool_calls"]
+                        messages.append(msg)
+                    elif msg_type == "ToolMessage":
+                        tool_call_id = msg_dict.get("tool_call_id", "")
+                        messages.append(ToolMessage(content=content, tool_call_id=tool_call_id))
+                
+                if chat_request.prompt and (not messages or not isinstance(messages[-1], HumanMessage) or messages[-1].content != chat_request.prompt):
+                    messages.append(HumanMessage(content=chat_request.prompt))
+                
+                initial_state = {
+                    "messages": messages,
+                    "needs_approval_from_human": chat_request.state.get("needs_approval_from_human", False)
+                }
+                # Merge any existing state fields
+                for key, value in chat_request.state.items():
+                    if key not in ["messages", "needs_approval_from_human"]:
+                        initial_state[key] = value
+            else:
+                # New conversation
+                messages = []
+                if chat_request.prompt:
+                    messages = [HumanMessage(content=chat_request.prompt)]
+                initial_state = {
+                    "messages": messages,
+                    "needs_approval_from_human": False
+                }
+            
+            # Merge approval fields from request into state (if provided)
+            if chat_request.approval_state is not None:
+                initial_state["approval_state"] = chat_request.approval_state
+            if chat_request.approval_feedback is not None:
+                initial_state["approval_feedback"] = chat_request.approval_feedback
+            
+            # Node name to human-readable description mapping
+            node_descriptions = {
+                "intent_classifier": "Understanding your request...",
+                "habit_planner": "Planning your schedule...",
+                "execution_decider": "Deciding execution strategy...",
+                "clarification_agent": "Clarifying details...",
+                "explanation_agent": "Preparing explanation...",
+                "fetch_calendar_events": "Fetching your calendar events...",
+                "normalize_calendar_events": "Processing calendar data...",
+                "compute_free_slots": "Finding available time slots...",
+                "filter_slots": "Filtering time slots...",
+                "select_slots": "Selecting best time slots...",
+                "approval_node": "Preparing schedule for review...",
+                "create_calendar_events": "Creating calendar events...",
+                "post_schedule_summary": "Finalizing schedule...",
+            }
+            
+            # Stream the agent execution
+            final_result = None
+            for event in app.stream(initial_state):
+                # LangGraph streams events with node names as keys
+                # Each event is a dict like: {"node_name": state_after_node}
+                for node_name, node_state in event.items():
+                    # Skip internal LangGraph events
+                    if node_name.startswith("__"):
+                        continue
+                    
+                    # Send progress update
+                    description = node_descriptions.get(node_name, f"Processing {node_name}...")
+                    yield f"data: {json.dumps({'type': 'progress', 'node': node_name, 'description': description})}\n\n"
+                    
+                    # Store the final result (last node's state)
+                    final_result = node_state
+            
+            if not final_result:
+                yield f"data: {json.dumps({'type': 'error', 'error': 'No result from agent'})}\n\n"
+                return
+            
+            # Check approval state
+            approval_state = final_result.get("approval_state")
+            approval_summary = final_result.get("explanation_payload") if approval_state == "PENDING" else None
+            needs_approval = final_result.get("needs_approval_from_human", False) or approval_state == "PENDING"
+            
+            # Format messages for response
+            formatted_messages = []
+            for msg in final_result["messages"]:
+                msg_dict = {
+                    "type": type(msg).__name__,
+                    "content": getattr(msg, 'content', ''),
+                }
+                
+                # Add tool calls if present
+                if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                    msg_dict["tool_calls"] = [
+                        {
+                            "name": tc.get("name"),
+                            "args": tc.get("args", {}),
+                            "id": tc.get("id")
+                        }
+                        for tc in msg.tool_calls
+                    ]
+                
+                # Add tool call ID for ToolMessage
+                if hasattr(msg, 'tool_call_id'):
+                    msg_dict["tool_call_id"] = msg.tool_call_id
+                
+                formatted_messages.append(msg_dict)
+            
+            # Format state dict for response
+            state_dict = {
+                "messages": formatted_messages,
+                "needs_approval_from_human": final_result.get("needs_approval_from_human", False)
+            }
+            if approval_state:
+                state_dict["approval_state"] = approval_state
+            if approval_feedback := final_result.get("approval_feedback"):
+                state_dict["approval_feedback"] = approval_feedback
+            
+            # Extract the final response
+            agent_response = ""
+            if final_result["messages"]:
+                last_message = final_result["messages"][-1]
+                if isinstance(last_message, AIMessage):
+                    agent_response = last_message.content or ""
+            
+            # If no response from messages, generate one based on approval state
+            if not agent_response:
+                if approval_state == "PENDING":
+                    agent_response = "I've found some time slots for your schedule. Please review and approve below."
+                elif approval_state == "APPROVED":
+                    agent_response = "Great! I'm creating the calendar events now."
+                elif approval_state == "REJECTED":
+                    agent_response = "I understand. The scheduling has been cancelled."
+                elif approval_state == "CHANGES_REQUESTED":
+                    agent_response = "I'll adjust the schedule based on your feedback."
+                else:
+                    explanation = final_result.get("explanation_payload", {})
+                    if isinstance(explanation, dict):
+                        agent_response = explanation.get("message") or explanation.get("summary") or "Request processed."
+                    else:
+                        agent_response = "Request processed."
+            
+            # Send final response
+            chat_response = ChatResponse(
+                success=True,
+                response=agent_response,
+                prompt=chat_request.prompt,
+                messages=formatted_messages,
+                needs_approval_from_human=needs_approval,
+                approval_state=approval_state,
+                approval_summary=approval_summary,
+                state=state_dict
+            )
+            
+            yield f"data: {json.dumps({'type': 'complete', 'response': chat_response.model_dump()})}\n\n"
+            
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'error': f'Internal server error: {str(e)}'})}\n\n"
+    
+    return Response(
+        stream_with_context(generate()),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no',
+            'Connection': 'keep-alive',
+        }
+    )
 
 
 # ============================================================================
