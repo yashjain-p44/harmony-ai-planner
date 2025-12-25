@@ -3,6 +3,9 @@
 from datetime import datetime, timedelta
 from typing import List, Dict
 
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import AIMessage
+
 from app.ai_agent.state import AgentState
 
 
@@ -10,8 +13,8 @@ def approval_node(state: AgentState) -> AgentState:
     """
     Handle approval flow for selected slots.
     
-    Reads: selected_slots, habit_definition, approval_state, approval_feedback
-    Writes: approval_state, explanation_payload (if rejected or changes requested)
+    Reads: selected_slots, habit_definition, approval_state, approval_feedback, messages
+    Writes: messages (append AIMessage when approval needed), approval_state, explanation_payload
     """
     print("[approval_node] Starting approval flow...")
     selected_slots = state.get("selected_slots", [])
@@ -103,12 +106,36 @@ def approval_node(state: AgentState) -> AgentState:
     
     print(f"[approval_node] Generated approval summary:\n{summary_message}")
     
+    # Generate a friendly, conversational message asking for approval
+    messages = state.get("messages", [])
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7)
+    
+    # Format slots for the LLM prompt
+    slots_text = "\n".join([
+        f"- {slot_info['date']} at {slot_info['time']} ({slot_info['duration_minutes']} minutes)"
+        for slot_info in slots_summary
+    ])
+    
+    system_prompt = """You are a helpful assistant asking the user to approve a schedule. Be friendly, conversational, and concise. 
+Briefly mention what you found and ask them to review and approve. Don't repeat all the details - they'll see them in the approval box."""
+    
+    prompt = f"""{system_prompt}
+
+I found {len(selected_slots)} time slot(s) for '{habit_name}' ({frequency}, {duration_minutes} minutes):
+{slots_text}
+
+Your friendly message asking for approval:"""
+    
+    response = llm.invoke(prompt)
+    approval_message = AIMessage(content=response.content)
+    
     # Set to PENDING to require human approval
     # The approval state will be updated by the frontend when user responds
     approval_state = "PENDING"
     print("[approval_node] Setting approval state to PENDING - waiting for user approval")
     
     return {
+        "messages": messages + [approval_message],
         "approval_state": approval_state,
         "explanation_payload": {
             "summary": summary_message,
