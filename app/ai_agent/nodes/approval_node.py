@@ -95,16 +95,10 @@ def approval_node(state: AgentState) -> AgentState:
     
     print(f"[approval_node] Generated approval summary:\n{summary_message}")
     
-    # For now, auto-approve if no feedback exists
-    # In a real implementation, this would wait for human approval
-    # Setting to PENDING allows external systems to update the state
+    # Set to PENDING to require human approval
+    # The approval state will be updated by the frontend when user responds
     approval_state = "PENDING"
-    
-    # Auto-approve if no explicit rejection/feedback
-    # This can be changed to require explicit approval
-    if approval_feedback is None:
-        approval_state = "APPROVED"
-        print("[approval_node] Auto-approving (no feedback provided)")
+    print("[approval_node] Setting approval state to PENDING - waiting for user approval")
     
     return {
         "approval_state": approval_state,
@@ -113,7 +107,8 @@ def approval_node(state: AgentState) -> AgentState:
             "selected_slots": selected_slots,
             "habit_name": habit_name,
             "frequency": frequency,
-            "duration_minutes": duration_minutes
+            "duration_minutes": duration_minutes,
+            "slots_summary": slots_summary  # Include formatted slots for UI display
         }
     }
 
