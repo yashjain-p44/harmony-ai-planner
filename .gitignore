@@ -57,6 +57,7 @@ credentials.json
 token.json
 **/credentials.json
 **/token.json
+app/creds/*.json
 
 # Frontend (Original)
 frontend/node_modules/
