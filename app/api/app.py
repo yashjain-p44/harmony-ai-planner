@@ -2095,6 +2095,347 @@ def update_task(task_list_id: str, task_id: str):
         }), 500
 
 
+@app.route('/tasks/lists/<task_list_id>/tasks/<task_id>/schedule', methods=['POST'])
+def schedule_task(task_list_id: str, task_id: str):
+    """
+    Schedule Task with AI
+    ---
+    tags:
+      - Tasks
+    summary: Schedule a task using AI agent
+    description: |
+      Triggers the LangGraph-based AI flow to schedule a task:
+      1. Checks/assigns priority if missing
+      2. Estimates time required
+      3. Finds suitable time slots from calendar
+      4. Proposes schedule and waits for approval
+      5. Creates calendar event on approval
+      
+      This endpoint returns immediately with approval state if approval is needed.
+      Use the approval_state and approval_feedback fields to handle user approval.
+    parameters:
+      - name: task_list_id
+        in: path
+        type: string
+        required: true
+        description: Task list identifier
+        example: "@default"
+      - name: task_id
+        in: path
+        type: string
+        required: true
+        description: The ID of the task to schedule
+        example: "task123"
+      - name: body
+        in: body
+        required: false
+        schema:
+          type: object
+          properties:
+            approval_state:
+              type: string
+              enum: [APPROVED, REJECTED, CHANGES_REQUESTED]
+              description: Approval state (only needed when responding to approval request)
+            approval_feedback:
+              type: string
+              description: Feedback for approval (only needed when responding to approval request)
+            state:
+              type: object
+              description: Previous agent state to resume from (for approval workflow)
+    responses:
+      200:
+        description: Task scheduling initiated or completed
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+            response:
+              type: string
+              description: AI agent response message
+            needs_approval_from_human:
+              type: boolean
+            approval_state:
+              type: string
+              enum: [PENDING, APPROVED, REJECTED, CHANGES_REQUESTED]
+            approval_summary:
+              type: object
+              description: Summary of proposed schedule (when approval is pending)
+            state:
+              type: object
+              description: Agent state (for resuming workflow)
+            created_events:
+              type: array
+              description: Created calendar events (when approved and completed)
+      400:
+        description: Bad request
+      404:
+        description: Task not found
+      500:
+        description: Server error
+    """
+    if tasks_repo is None:
+        return jsonify({
+            "success": False,
+            "error": "Tasks repository not initialized"
+        }), 503
+    
+    try:
+        # Get task data
+        task = tasks_repo.get_task(task_id, task_list_id=task_list_id)
+        
+        # Get request body for approval state (if this is a follow-up approval)
+        request_data = request.get_json() or {}
+        approval_state = request_data.get('approval_state')
+        approval_feedback = request_data.get('approval_feedback')
+        previous_state = request_data.get('state')
+        
+        # Initialize the agent
+        app = create_agent()
+        
+        # Prepare initial state
+        if previous_state:
+            # Resume from previous state (approval workflow)
+            initial_state = previous_state
+            # Convert messages back to LangChain message objects
+            messages = []
+            for msg_dict in initial_state.get("messages", []):
+                msg_type = msg_dict.get("type")
+                content = msg_dict.get("content", "")
+                if msg_type == "HumanMessage":
+                    messages.append(HumanMessage(content=content))
+                elif msg_type == "AIMessage":
+                    msg = AIMessage(content=content)
+                    if "tool_calls" in msg_dict:
+                        msg.tool_calls = msg_dict.get("tool_calls", [])
+                    messages.append(msg)
+                elif msg_type == "ToolMessage":
+                    msg = ToolMessage(content=content, tool_call_id=msg_dict.get("tool_call_id", ""))
+                    messages.append(msg)
+            initial_state["messages"] = messages
+        else:
+            # New scheduling request
+            # Set intent to TASK_SCHEDULE and provide task data
+            initial_state = {
+                "messages": [HumanMessage(content=f"Schedule task: {task.get('title', '')}")],
+                "intent_type": "TASK_SCHEDULE",
+                "task_data": {
+                    "id": task.get("id"),
+                    "title": task.get("title", ""),
+                    "notes": task.get("notes", ""),
+                    "due": task.get("due"),
+                    "priority": task.get("priority")  # If task has priority field
+                },
+                "needs_approval_from_human": False
+            }
+        
+        # Merge approval fields from request into state (if provided)
+        if approval_state is not None:
+            initial_state["approval_state"] = approval_state
+        if approval_feedback is not None:
+            initial_state["approval_feedback"] = approval_feedback
+        
+        # Run the agent
+        result = app.invoke(initial_state)
+        
+        # Check if task needs due date update (if original due date was in the past)
+        task_definition = result.get("task_definition", {})
+        if task_definition.get("needs_due_date_update"):
+            new_due_date = task_definition.get("due")
+            task_id = task_definition.get("task_id")
+            if new_due_date and task_id and tasks_repo is not None:
+                try:
+                    print(f"[schedule_task] Updating task {task_id} due date to {new_due_date}")
+                    updated_task = tasks_repo.update_task(
+                        task_id=task_id,
+                        task_list_id=task_list_id,
+                        due=new_due_date
+                    )
+                    print(f"[schedule_task] ✅ Successfully updated task due date: {updated_task.get('due', 'N/A')}")
+                except Exception as e:
+                    print(f"[schedule_task] ⚠️  Failed to update task due date: {str(e)}")
+                    # Continue with scheduling even if update fails
+        
+        # Check approval state
+        result_approval_state = result.get("approval_state")
+        approval_summary = result.get("explanation_payload") if result_approval_state == "PENDING" else None
+        needs_approval = result.get("needs_approval_from_human", False) or result_approval_state == "PENDING"
+        
+        # Debug logging
+        print(f"[schedule_task] Approval state: {result_approval_state}")
+        print(f"[schedule_task] Needs approval: {needs_approval}")
+        print(f"[schedule_task] Approval summary: {approval_summary}")
+        print(f"[schedule_task] Selected slots: {result.get('selected_slots', [])}")
+        print(f"[schedule_task] Filtered slots: {result.get('filtered_slots', [])}")
+        print(f"[schedule_task] Free slots: {len(result.get('free_time_slots', []))}")
+        print(f"[schedule_task] Messages count: {len(result.get('messages', []))}")
+        print(f"[schedule_task] Created events: {result.get('created_events', [])}")
+        
+        # If approval is PENDING but no summary, try to build one from selected_slots
+        if result_approval_state == "PENDING" and not approval_summary:
+            selected_slots = result.get("selected_slots", [])
+            task_definition = result.get("task_definition", {})
+            if selected_slots and task_definition:
+                print("[schedule_task] Building approval summary from selected_slots")
+                approval_summary = {
+                    "summary": f"I've found a time slot for your task.",
+                    "selected_slots": selected_slots,
+                    "task_name": task_definition.get("task_name", "Task"),
+                    "priority": task_definition.get("priority", "MEDIUM"),
+                    "duration_minutes": task_definition.get("estimated_duration_minutes", 60)
+                }
+                needs_approval = True
+        
+        # Format messages for response
+        formatted_messages = []
+        for msg in result.get("messages", []):
+            msg_dict = {
+                "type": type(msg).__name__,
+                "content": getattr(msg, 'content', ''),
+            }
+            
+            # Add tool calls if present
+            if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                msg_dict["tool_calls"] = [
+                    {
+                        "name": tc.get("name"),
+                        "args": tc.get("args", {}),
+                        "id": tc.get("id")
+                    }
+                    for tc in msg.tool_calls
+                ]
+            
+            # Add tool call ID for ToolMessage
+            if hasattr(msg, 'tool_call_id'):
+                msg_dict["tool_call_id"] = msg.tool_call_id
+            
+            formatted_messages.append(msg_dict)
+        
+        # Format state dict for response
+        state_dict = {
+            "messages": formatted_messages,
+            "needs_approval_from_human": result.get("needs_approval_from_human", False)
+        }
+        # Include approval state in state dict
+        if result_approval_state:
+            state_dict["approval_state"] = result_approval_state
+        if result.get("approval_feedback"):
+            state_dict["approval_feedback"] = result.get("approval_feedback")
+        
+        # Extract the last response for display
+        # Only set agent_response if we don't have messages (to avoid duplicates)
+        # The frontend will use the messages array, not the response string
+        agent_response = ""
+        
+        # Check if we have messages first
+        result_messages = result.get("messages", [])
+        if result_messages:
+            # Try to get the last AIMessage content
+            for msg in reversed(result_messages):
+                if isinstance(msg, AIMessage):
+                    agent_response = msg.content or ""
+                    break
+        
+        # If no response from messages, generate one based on approval state
+        if not agent_response:
+            if result_approval_state == "PENDING":
+                agent_response = "I've found a time slot for your task. Please review and approve below."
+            elif result_approval_state == "APPROVED":
+                agent_response = "Great! I've created the calendar event for your task."
+            elif result_approval_state == "REJECTED":
+                # Check if it's because no slots were found
+                explanation = result.get("explanation_payload", {})
+                if explanation.get("reason") == "No slots available":
+                    agent_response = "I couldn't find any suitable time slots in your calendar. Please try adjusting your schedule or task requirements."
+                else:
+                    agent_response = "I understand. The scheduling has been cancelled."
+            elif result_approval_state == "CHANGES_REQUESTED":
+                agent_response = "I'll adjust the schedule based on your feedback."
+            else:
+                # If no approval state and no messages, something went wrong
+                # Check if slots were selected
+                selected_slots = result.get("selected_slots", [])
+                if not selected_slots:
+                    agent_response = "I couldn't find any suitable time slots for scheduling. Please check your calendar availability."
+                else:
+                    agent_response = "Task scheduling completed."
+        
+        # Build response
+        response_data = {
+            "success": True,
+            "response": agent_response,
+            "needs_approval_from_human": needs_approval,
+            "state": state_dict
+        }
+        
+        # Always include approval_state if it exists
+        if result_approval_state:
+            response_data["approval_state"] = result_approval_state
+        elif needs_approval:
+            # If needs_approval is True but no approval_state, set it to PENDING
+            response_data["approval_state"] = "PENDING"
+            result_approval_state = "PENDING"
+        
+        # Always include approval_summary if it exists or if we need approval
+        if approval_summary:
+            response_data["approval_summary"] = approval_summary
+        elif needs_approval and result_approval_state == "PENDING":
+            # Build approval summary from selected_slots if missing
+            selected_slots = result.get("selected_slots", [])
+            task_definition = result.get("task_definition", {})
+            if selected_slots and task_definition:
+                print("[schedule_task] Building missing approval_summary from selected_slots")
+                from datetime import datetime
+                slots_summary = []
+                for idx, slot in enumerate(selected_slots, 1):
+                    try:
+                        start_time = datetime.fromisoformat(slot["start"])
+                        end_time = datetime.fromisoformat(slot["end"])
+                        duration = int((end_time - start_time).total_seconds() / 60)
+                        slots_summary.append({
+                            "slot_number": idx,
+                            "date": start_time.strftime("%Y-%m-%d"),
+                            "time": start_time.strftime("%H:%M"),
+                            "duration_minutes": duration,
+                            "start": slot["start"],
+                            "end": slot["end"]
+                        })
+                    except (ValueError, KeyError):
+                        continue
+                
+                response_data["approval_summary"] = {
+                    "summary": f"I've found a time slot for your task.",
+                    "selected_slots": selected_slots,
+                    "task_name": task_definition.get("task_name", "Task"),
+                    "priority": task_definition.get("priority", "MEDIUM"),
+                    "duration_minutes": task_definition.get("estimated_duration_minutes", 60),
+                    "slots_summary": slots_summary
+                }
+        
+        # Include created events if available
+        created_events = result.get("created_events", [])
+        if created_events:
+            response_data["created_events"] = created_events
+        
+        return jsonify(response_data), 200
+        
+    except HttpError as e:
+        if e.resp.status == 404:
+            return jsonify({
+                "success": False,
+                "error": f"Task not found: {str(e)}"
+            }), 404
+        return jsonify({
+            "success": False,
+            "error": f"Failed to schedule task: {str(e)}"
+        }), 500
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Internal server error: {str(e)}"
+        }), 500
+
+
 @app.route('/tasks/lists/<task_list_id>/tasks/<task_id>', methods=['DELETE'])
 def delete_task(task_list_id: str, task_id: str):
     """
