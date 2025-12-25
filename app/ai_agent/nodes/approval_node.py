@@ -1,6 +1,6 @@
 """Approval node - handles approval flow for selected slots before creating events."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict
 
 from langchain_openai import ChatOpenAI
@@ -78,16 +78,24 @@ def approval_node(state: AgentState) -> AgentState:
     duration_minutes = habit_definition.get("duration_minutes", 30)
     
     # Format slots summary
+    # Always calculate habit_duration_minutes from end_time - start_time
+    # Do not modify start/end times - just pass through the actual slot info
     slots_summary = []
     for i, slot in enumerate(selected_slots, 1):
         try:
             start_time = datetime.fromisoformat(slot["start"])
             end_time = datetime.fromisoformat(slot["end"])
+            
+            # Always calculate habit_duration_minutes from actual start and end times
+            habit_duration_minutes = int((end_time - start_time).total_seconds() / 60)
+            
             slots_summary.append({
                 "slot_number": i,
                 "date": start_time.strftime("%Y-%m-%d"),
                 "time": start_time.strftime("%H:%M"),
-                "duration_minutes": slot.get("duration_minutes", duration_minutes)
+                "duration_minutes": habit_duration_minutes,  # Always calculated from end_time - start_time
+                "start": slot["start"],  # Pass through original start time
+                "end": slot["end"]  # Pass through original end time
             })
         except (ValueError, KeyError):
             continue
