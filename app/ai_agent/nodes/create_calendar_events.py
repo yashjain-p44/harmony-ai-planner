@@ -1,6 +1,7 @@
 """Create calendar events node - creates events in calendar provider."""
 
 import json
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict
 
 from app.ai_agent.state import AgentState
@@ -27,12 +28,15 @@ def create_calendar_events(state: AgentState) -> AgentState:
     created_events: List[Dict] = []
     
     for i, slot in enumerate(selected_slots):
-        print(f"[create_calendar_events] Processing slot {i+1}/{len(selected_slots)}: {slot.get('start')} to {slot.get('end')}")
         start_time = slot.get("start")
         end_time = slot.get("end")
         
-        if not start_time:
+        if not start_time or not end_time:
             continue  # Skip invalid slots
+        
+        # Buffer is now a gap BETWEEN events, not part of the event duration
+        # So slot start/end times are already the event start/end times
+        print(f"[create_calendar_events] Processing slot {i+1}/{len(selected_slots)}: {start_time} to {end_time}")
         
         try:
             # Use the calendar tool to create the event
