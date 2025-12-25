@@ -80,7 +80,28 @@ class GoogleAuthProvider:
         if not self._credentials or not self._credentials.valid:
             if self._credentials and self._credentials.expired and self._credentials.refresh_token:
                 # Refresh expired token
-                self._credentials.refresh(Request())
+                try:
+                    self._credentials.refresh(Request())
+                    # Save refreshed credentials
+                    self._save_credentials()
+                except Exception as e:
+                    # If refresh fails, clear credentials and re-authenticate
+                    print(f"Token refresh failed: {e}")
+                    print("Clearing invalid token and requesting re-authentication...")
+                    self._credentials = None
+                    if os.path.exists(self.token_file):
+                        os.remove(self.token_file)
+                    # Fall through to OAuth flow
+                    if not os.path.exists(self.credentials_file):
+                        raise FileNotFoundError(
+                            f"Credentials file not found: {self.credentials_file}\n"
+                            "Please download your OAuth2 credentials from Google Cloud Console."
+                        )
+                    flow = InstalledAppFlow.from_client_secrets_file(
+                        self.credentials_file, self.scopes
+                    )
+                    self._credentials = flow.run_local_server(port=0)
+                    self._save_credentials()
             else:
                 # Run OAuth flow
                 if not os.path.exists(self.credentials_file):
@@ -92,9 +113,8 @@ class GoogleAuthProvider:
                     self.credentials_file, self.scopes
                 )
                 self._credentials = flow.run_local_server(port=0)
-            
-            # Save credentials for next run
-            self._save_credentials()
+                # Save credentials for next run
+                self._save_credentials()
         
         return self._credentials
     
@@ -110,10 +130,21 @@ class GoogleAuthProvider:
         
         Returns:
             Refreshed Credentials object.
+        
+        Raises:
+            Exception: If refresh fails and re-authentication is needed.
         """
         if self._credentials and self._credentials.refresh_token:
-            self._credentials.refresh(Request())
-            self._save_credentials()
+            try:
+                self._credentials.refresh(Request())
+                self._save_credentials()
+            except Exception as e:
+                # If refresh fails, clear and re-authenticate
+                print(f"Token refresh failed: {e}")
+                self._credentials = None
+                if os.path.exists(self.token_file):
+                    os.remove(self.token_file)
+                return self.get_credentials()
         else:
             # If no refresh token, need to re-authenticate
             self._credentials = None
