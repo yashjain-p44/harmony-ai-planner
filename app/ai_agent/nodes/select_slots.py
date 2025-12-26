@@ -5,6 +5,7 @@ from typing import List, Dict
 import json
 
 from langchain_openai import ChatOpenAI
+from langchain_core.messages import HumanMessage
 
 from app.ai_agent.state import AgentState
 
@@ -49,15 +50,32 @@ def select_slots(state: AgentState) -> AgentState:
         # Task-specific logic: select only ONE slot
         print("Select Slots: Processing as TASK (single event)")
         
-        # Extract task information
+        # Extract minimal task information
         task_name = task_definition.get("task_name", "task")
-        priority = task_definition.get("priority", "MEDIUM")
         estimated_time_minutes = task_definition.get("estimated_time_minutes", 30)
         task_description = task_definition.get("description", "")
         
+        # Get original user message for context
+        messages = state.get("messages", [])
+        user_message = ""
+        for msg in reversed(messages):
+            if isinstance(msg, HumanMessage):
+                user_message = msg.content
+                break
+        
+        # Get current date for temporal reference
+        today = datetime.now()
+        today_str = today.strftime("%Y-%m-%d")
+        today_day_name = today.strftime("%A")
+        tomorrow = today + timedelta(days=1)
+        tomorrow_str = tomorrow.strftime("%Y-%m-%d")
+        tomorrow_day_name = tomorrow.strftime("%A")
+        
         print(f"Select Slots: Task name = {task_name}")
-        print(f"Select Slots: Priority = {priority}")
         print(f"Select Slots: Estimated time = {estimated_time_minutes} minutes")
+        print(f"Select Slots: Today is {today_day_name}, {today_str}")
+        print(f"Select Slots: Tomorrow is {tomorrow_day_name}, {tomorrow_str}")
+        print(f"Select Slots: User's original request = {user_message[:100]}..." if len(user_message) > 100 else f"Select Slots: User's original request = {user_message}")
         
         # For tasks, we only need to select 1 slot
         num_slots_to_select = 1
@@ -122,14 +140,26 @@ def select_slots(state: AgentState) -> AgentState:
     
     # Create different prompts for tasks vs habits
     if is_task:
-        # Task-specific prompt - comprehensive and high quality
-        system_prompt = f"""You are an intelligent scheduling assistant specializing in task scheduling. Your goal is to select the optimal time slot for a single task based on all available information.
+        # Task-specific prompt - simplified and open-ended
+        system_prompt = f"""You are an intelligent scheduling assistant specializing in task scheduling. Your goal is to select the optimal time slot for a single task based on the user's original request.
 
-=== TASK INFORMATION ===
+=== CURRENT DATE CONTEXT ===
+Today is {today_day_name}, {today_str}
+Tomorrow is {tomorrow_day_name}, {tomorrow_str}
+
+Use this date context to understand temporal references:
+- "tonight" means today ({today_str}) in the evening (after 5 PM)
+- "today" means {today_str}
+- "tomorrow" means {tomorrow_str}
+- When user mentions specific dates, compare them to today's date ({today_str})
+
+=== USER'S ORIGINAL REQUEST ===
+"{user_message}"
+
+=== TASK DETAILS ===
 Task Name: {task_name}
-Priority Level: {priority}
 Estimated Duration: {estimated_time_minutes} minutes
-Description: {task_description if task_description else 'No additional description provided'}
+Description: {task_description if task_description else 'See user request above for details'}
 
 === AVAILABLE FREE TIME SLOTS ===
 You have access to {len(sorted_candidates)} candidate time slots. These are PERIODS when the user's calendar is free and available for scheduling. Each slot represents a continuous block of free time.
@@ -152,48 +182,65 @@ Example: If a free slot is from 9:00 AM to 1:00 PM (4 hours), and the task needs
 
 === SELECTION CRITERIA ===
 
-1. DURATION REQUIREMENT (MANDATORY):
+Based on the user's original request above, understand and apply:
+
+1. TEMPORAL REQUIREMENTS (HIGHEST PRIORITY):
+   - Carefully read the user's request to understand WHEN they want the task scheduled
+   - Remember: Today is {today_str} ({today_day_name}), Tomorrow is {tomorrow_str} ({tomorrow_day_name})
+   - If they say "tonight": ONLY consider free slots on {today_str} in the evening (after 5 PM). Do NOT schedule for future dates.
+   - If they say "today": ONLY consider free slots on {today_str}. Do NOT schedule for {tomorrow_str} or future dates.
+   - If they say "tomorrow": ONLY consider free slots on {tomorrow_str}. Do NOT schedule for {today_str} or dates beyond {tomorrow_str}.
+   - If they mention a specific date (e.g., "Dec 26", "January 5"): Parse the date and ONLY consider free slots on that exact date
+   - If they say "this week" or "next week": Calculate from today ({today_str}) and prioritize slots within that timeframe
+   - Temporal requirements are NON-NEGOTIABLE - if user says "tonight" and no slots are available on {today_str}, you must still respect the constraint
+   - Check the date field in each free slot - only consider slots that match the temporal requirement
+   - Compare slot dates to today's date ({today_str}) to determine if they are "today", "tomorrow", or in the future
+
+2. DURATION REQUIREMENT (MANDATORY):
    - The selected free slot MUST have duration_minutes >= {required_duration_minutes} minutes (enough time to fit the task)
    - The task requires {estimated_time_minutes} minutes to complete
    - Your selected start time must allow the task to complete before the free slot ends
    - Formula: selected_start_time + {estimated_time_minutes} minutes <= free_slot_end_time
    - Prefer slots with some buffer time if available (allows for slight overruns and natural breaks)
 
-2. PRIORITY-BASED SCHEDULING:
-   - HIGH priority tasks:
-     * Prioritize EARLIEST available slots
-     * Urgency is the primary concern
-     * Prefer slots today or tomorrow if available
-     * Time of day is secondary to urgency
-   
-   - MEDIUM priority tasks:
-     * Balance urgency with convenience
-     * Consider optimal time of day for productivity
-     * Prefer slots within the next few days
-     * Avoid scheduling too far in advance unless necessary
-   
-   - LOW priority tasks:
-     * Flexibility is key - convenience over urgency
-     * Can be scheduled further out
-     * Prioritize optimal time of day for the task type
-     * Consider user's typical schedule patterns
-
-3. TIME OF DAY CONSIDERATIONS:
-   - Analyze the task description to determine optimal time:
-     * Deep work / Focus tasks: Prefer morning hours (9 AM - 12 PM) when focus is highest
-     * Creative tasks: Consider when user is most creative (often mid-morning or afternoon)
+3. TIME OF DAY PREFERENCES:
+   - Understand from the user's request what time of day they prefer:
+     * "morning", "in the morning", "AM" → Prefer slots in morning hours (6 AM - 12 PM)
+     * "afternoon", "in the afternoon", "PM" → Prefer slots in afternoon hours (12 PM - 5 PM)
+     * "evening", "tonight", "night" → Prefer slots in evening hours (5 PM - 9 PM)
+     * Specific times like "10 AM", "2 PM", "around 3" → Prefer slots around those times
+     * Time ranges like "between 2-4 PM" → Prefer slots within that range
+   - IMPORTANT: Time preferences represent BROAD WINDOWS. The task can be scheduled anywhere within the preferred window.
+   - Example: If user says "morning" and task is 30 minutes, you can schedule it at 7:00 AM, 9:30 AM, 11:00 AM, etc. - anywhere within the morning window
+   - If no time preference is mentioned, consider the task type:
+     * Deep work / Focus tasks: Prefer morning hours (9 AM - 12 PM)
+     * Creative tasks: Consider mid-morning or afternoon
      * Administrative tasks: Can be scheduled during lower-energy periods
-     * Meetings/Calls: Consider business hours and time zones
-     * Physical tasks: Consider energy levels and availability
+     * Meetings/Calls: Consider business hours
+     * Physical tasks: Consider energy levels
+     * Dinner/meals: Typically evening (5 PM - 8 PM)
    - Avoid scheduling during typical meal times unless task is brief
-   - Consider work-life balance (avoid late evening for work tasks if possible)
 
-4. DAY OF WEEK CONSIDERATIONS:
-   - Weekdays (Monday-Friday): Better for work-related tasks
-   - Weekends: Better for personal tasks, hobbies, or non-urgent work
-   - Consider the task description to match appropriate day type
+4. DAY OF WEEK PREFERENCES:
+   - Understand from the user's request what days they prefer:
+     * "weekdays", "Monday-Friday" → Only consider weekdays
+     * "weekend", "Saturday or Sunday" → Only consider weekends
+     * Specific days like "Monday", "Wednesday" → Only consider those days
+   - If no day preference mentioned, consider the task type:
+     * Work-related tasks: Prefer weekdays
+     * Personal tasks, hobbies: Can be weekends
+     * Social activities: Often weekends or evenings
 
-5. START TIME SELECTION WITHIN FREE SLOT:
+5. URGENCY AND PRIORITY:
+   - Infer urgency from the user's language:
+     * "tonight", "today", "asap", "urgent" → HIGH urgency, prioritize earliest slots
+     * "tomorrow", "this week" → MEDIUM urgency, balance urgency with convenience
+     * No urgency mentioned → LOW urgency, can be scheduled flexibly
+   - High urgency: Prioritize EARLIEST available slots that meet other criteria
+   - Medium urgency: Balance urgency with convenience and optimal timing
+   - Low urgency: Prioritize convenience and optimal time of day
+
+6. START TIME SELECTION WITHIN FREE SLOT:
    - Once you've chosen a free slot, select the optimal START TIME within it
    - Consider the task type when choosing start time:
      * Morning tasks (9-11 AM): Best for high-focus work
@@ -203,7 +250,7 @@ Example: If a free slot is from 9:00 AM to 1:00 PM (4 hours), and the task needs
    - Leave buffer time before/after if the free slot allows (e.g., if slot is 2 hours and task is 30 min, don't schedule at the very start or end)
    - Consider natural break points (e.g., on the hour, half-hour, or after typical meal times)
    
-6. SLOT QUALITY ASSESSMENT:
+7. SLOT QUALITY ASSESSMENT:
    - Free slots can be any length - focus on finding the right time, not the right slot size
    - Consider slots that provide natural breaks before/after the task
    - Avoid scheduling too close to the end of a free slot (leave some buffer)
@@ -211,14 +258,15 @@ Example: If a free slot is from 9:00 AM to 1:00 PM (4 hours), and the task needs
 
 === SELECTION PROCESS ===
 
-1. Review ALL available free time slots below
-2. Filter free slots that have enough time to fit the task (duration_minutes >= {required_duration_minutes} minutes)
-3. Apply priority-based filtering (HIGH = earliest free slot, MEDIUM = balanced, LOW = convenient)
-4. Consider time of day and day of week appropriateness for this specific task
-5. Select ONE free slot that optimizes all criteria
-6. Within that free slot, choose the OPTIMAL START TIME for the task
-7. Ensure: selected_start_time + {estimated_time_minutes} minutes <= free_slot_end_time
-8. Provide clear reasoning for both the free slot choice and the specific start time
+1. Review the user's original request carefully to understand all their preferences and requirements
+2. Review ALL available free time slots below
+3. Filter slots that meet the minimum duration requirement ({required_duration_minutes} minutes)
+4. Apply temporal requirements from the user's request (tonight, today, tomorrow, specific date, etc.)
+5. Apply time of day preferences from the user's request (morning, afternoon, evening, specific times)
+6. Apply day of week preferences from the user's request (weekdays, weekend, specific days)
+7. Consider urgency level inferred from the user's language
+8. Select the SINGLE best free slot and specific start time within it that best matches the user's request
+9. Provide clear reasoning that references the user's original request
 
 === OUTPUT FORMAT ===
 
@@ -226,7 +274,7 @@ Respond with a JSON object containing:
 {{
     "selected_slot_index": integer (the index of the free slot you chose, e.g., 5),
     "task_start_time": "ISO format datetime string (e.g., '2024-01-15T10:00:00Z')",
-    "reasoning": "Detailed explanation of: (1) why this free slot was chosen, (2) why this specific start time within the slot is optimal, considering the task name, priority, description, and how it aligns with the selection criteria"
+    "reasoning": "Detailed explanation that references the user's original request and explains: (1) why this free slot was chosen, (2) why this specific start time within the slot is optimal, and (3) how it matches what the user asked for"
 }}
 
 IMPORTANT:
@@ -292,14 +340,20 @@ Detailed Slot Information (sorted chronologically):
 
 === YOUR TASK ===
 Carefully analyze all the information above:
-1. Review the task details (name: "{task_name}", priority: {priority}, duration: {estimated_time_minutes} min, description: "{task_description if task_description else 'N/A'}")
-2. Examine all {len(slots_data)} available FREE TIME SLOTS (these are periods of free time, not task slots)
-3. Apply the selection criteria based on priority ({priority}) and task characteristics
-4. Choose ONE free slot that can accommodate the task
+1. Re-read the user's original request: "{user_message}"
+2. Understand what they're asking for:
+   - When do they want it? (tonight, today, tomorrow, specific date, flexible?)
+   - What time of day? (morning, afternoon, evening, specific time?)
+   - Which days? (weekdays, weekend, specific days?)
+   - How urgent is it? (inferred from their language)
+3. Examine all {len(slots_data)} available free time slots
+4. Choose ONE free slot that best matches the user's request
 5. Select a SPECIFIC START TIME within that free slot for the {estimated_time_minutes}-minute task
 6. Ensure your selected start time allows the task to complete within the free slot boundaries
 
-NOTE: The task_start_time in your response should be in ISO format (e.g., "2024-01-15T10:00:00Z" or "2024-01-15T10:00:00+00:00"). Use the date and time from the free slot you selected, but choose the optimal hour and minute within that free period.
+NOTE: The task_start_time in your response should be in ISO format (e.g., "2024-01-15T10:00:00Z" or "2024-01-15T10:00:00+00:00"). Use the date and time from the free slot you selected, but choose the optimal hour and minute within that free period based on the user's request.
+
+IMPORTANT: Your reasoning should explicitly reference the user's original request and explain how your selection matches what they asked for.
 
 Response (JSON only):"""
     else:
@@ -432,7 +486,7 @@ Response (JSON only):"""
         print("=" * 50)
         return {"selected_slots": selected_slots}
         
-    except (json.JSONDecodeError, KeyError, ValueError) as e:
+    except (json.JSONDecodeError, KeyError, ValueError, Exception) as e:
         print(f"Select Slots: LLM selection failed - {type(e).__name__}: {str(e)}")
         print("Select Slots: Falling back to simple selection...")
         
