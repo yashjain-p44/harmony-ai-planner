@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   ArrowLeft, 
@@ -21,6 +21,7 @@ import {
 import type { Task, Category } from '../App';
 import type { TaskList } from '../services/api';
 import { TaskForm } from './TaskForm';
+import { AIPanel } from './AIPanel';
 
 interface TaskManagementProps {
   tasks: Task[];
@@ -59,18 +60,106 @@ export function TaskManagement({
   const [filterTime, setFilterTime] = useState<FilterTime>('all');
   const [filterPriority, setFilterPriority] = useState<FilterPriority>('all');
   const [showTaskForm, setShowTaskForm] = useState(false);
+  const [isPanelOpen, setIsPanelOpen] = useState(true);
+  const aiPanelSendMessageRef = useRef<((message: string) => void) | null>(null);
+  // Local state to track scheduled status for demo (frontend-only, no API calls)
+  const [scheduledTaskIds, setScheduledTaskIds] = useState<Set<string>>(new Set());
+
+  // Format task details into a scheduling prompt
+  const formatTaskForScheduling = (task: Task): string => {
+    let prompt = `Please schedule this task: "${task.title}"`;
+    
+    if (task.duration) {
+      prompt += ` (${task.duration} hour${task.duration !== 1 ? 's' : ''})`;
+    }
+    
+    if (task.deadline) {
+      const deadlineDate = new Date(task.deadline);
+      prompt += `. Deadline: ${deadlineDate.toLocaleDateString()}`;
+    }
+    
+    if (task.category) {
+      prompt += `. Category: ${task.category}`;
+    }
+    
+    if (task.constraints) {
+      const constraints: string[] = [];
+      if (task.constraints.location) {
+        constraints.push(`location: ${task.constraints.location}`);
+      }
+      if (task.constraints.timeOfDay) {
+        constraints.push(`preferred time: ${task.constraints.timeOfDay}`);
+      }
+      if (task.constraints.energyLevel) {
+        constraints.push(`energy level: ${task.constraints.energyLevel}`);
+      }
+      if (constraints.length > 0) {
+        prompt += `. Constraints: ${constraints.join(', ')}`;
+      }
+    }
+    
+    if (task.notes) {
+      prompt += `. Notes: ${task.notes}`;
+    }
+    
+    prompt += '.';
+    
+    return prompt;
+  };
+
+  // Handle schedule task click - send to AI panel
+  const handleScheduleTaskClick = (taskId: string) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+    
+    // Ensure panel is open
+    if (!isPanelOpen) {
+      setIsPanelOpen(true);
+    }
+    
+    // Format task details and send to chatbot
+    const prompt = formatTaskForScheduling(task);
+    
+    // Wait a bit for panel to open, then send message
+    setTimeout(() => {
+      if (aiPanelSendMessageRef.current) {
+        aiPanelSendMessageRef.current(prompt);
+      }
+    }, 300);
+  };
+
+  // Toggle task scheduled status (frontend-only, no API calls)
+  const handleToggleTaskStatus = (taskId: string) => {
+    console.log('[TaskManagement] Toggling task status for:', taskId);
+    setScheduledTaskIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(taskId)) {
+        newSet.delete(taskId);
+        console.log('[TaskManagement] Removed from scheduled set');
+      } else {
+        newSet.add(taskId);
+        console.log('[TaskManagement] Added to scheduled set');
+      }
+      return newSet;
+    });
+  };
+
+  // Helper to check if a task is scheduled (from backend or local state)
+  const isTaskScheduled = (task: Task): boolean => {
+    return task.scheduledStart !== undefined || scheduledTaskIds.has(task.id);
+  };
 
   // Calculate statistics
   const stats = useMemo(() => {
     const total = tasks.length;
-    const scheduled = tasks.filter(t => t.scheduledStart).length;
-    const unscheduled = tasks.filter(t => !t.scheduledStart).length;
+    const scheduled = tasks.filter(t => isTaskScheduled(t)).length;
+    const unscheduled = tasks.filter(t => !isTaskScheduled(t)).length;
     const overdue = tasks.filter(t => 
-      t.deadline && new Date(t.deadline) < new Date() && !t.scheduledStart
+      t.deadline && new Date(t.deadline) < new Date() && !isTaskScheduled(t)
     ).length;
 
     return { total, scheduled, unscheduled, overdue };
-  }, [tasks]);
+  }, [tasks, scheduledTaskIds]);
 
   // Filter tasks
   const filteredTasks = useMemo(() => {
@@ -79,8 +168,9 @@ export function TaskManagement({
       if (filterCategory !== 'all' && task.category !== filterCategory) return false;
 
       // Status filter
-      if (filterStatus === 'scheduled' && !task.scheduledStart) return false;
-      if (filterStatus === 'unscheduled' && task.scheduledStart) return false;
+      const isScheduled = isTaskScheduled(task);
+      if (filterStatus === 'scheduled' && !isScheduled) return false;
+      if (filterStatus === 'unscheduled' && isScheduled) return false;
 
       // Time filter
       if (filterTime === 'today' && task.deadline) {
@@ -97,7 +187,7 @@ export function TaskManagement({
 
       return true;
     });
-  }, [tasks, filterCategory, filterStatus, filterTime, filterPriority]);
+  }, [tasks, filterCategory, filterStatus, filterTime, filterPriority, scheduledTaskIds]);
 
   // AI Suggestions
   const aiSuggestions = useMemo(() => {
@@ -327,45 +417,60 @@ export function TaskManagement({
         </div>
 
         {/* Main Content */}
-        <div className="flex gap-8">
+        <div className="relative flex gap-8">
           {/* Task List/Kanban */}
-          <div className="flex-1">
-            {viewMode === 'list' ? (
-              <TaskListView 
-                tasks={filteredTasks} 
-                onTaskClick={setSelectedTask}
-                onScheduleTask={onScheduleTask}
-              />
-            ) : (
-              <KanbanView 
-                tasks={filteredTasks} 
-                onTaskClick={setSelectedTask}
-                onScheduleTask={onScheduleTask}
-              />
-            )}
+          <div className={`flex-1 transition-all duration-500 ${isPanelOpen ? 'mr-[450px]' : 'mr-0'}`}>
+            <div className="flex gap-8">
+              <div className="flex-1">
+                {viewMode === 'list' ? (
+                  <TaskListView 
+                    tasks={filteredTasks} 
+                    onTaskClick={setSelectedTask}
+                    onScheduleTask={handleScheduleTaskClick}
+                    onToggleStatus={handleToggleTaskStatus}
+                    isTaskScheduled={isTaskScheduled}
+                  />
+                ) : (
+                  <KanbanView 
+                    tasks={filteredTasks} 
+                    onTaskClick={setSelectedTask}
+                    onScheduleTask={handleScheduleTaskClick}
+                    isTaskScheduled={isTaskScheduled}
+                  />
+                )}
+              </div>
+
+              {/* Task Detail Drawer */}
+              <AnimatePresence>
+                {selectedTask && (
+                  <TaskDetailDrawer
+                    task={selectedTask}
+                    onClose={() => setSelectedTask(null)}
+                    onUpdate={(updates) => {
+                      onUpdateTask(selectedTask.id, updates);
+                      setSelectedTask({ ...selectedTask, ...updates });
+                    }}
+                    onDelete={() => {
+                      onDeleteTask(selectedTask.id);
+                      setSelectedTask(null);
+                    }}
+                    onSchedule={() => {
+                      handleScheduleTaskClick(selectedTask.id);
+                      setSelectedTask(null);
+                    }}
+                  />
+                )}
+              </AnimatePresence>
+            </div>
           </div>
 
-          {/* Task Detail Drawer */}
-          <AnimatePresence>
-            {selectedTask && (
-              <TaskDetailDrawer
-                task={selectedTask}
-                onClose={() => setSelectedTask(null)}
-                onUpdate={(updates) => {
-                  onUpdateTask(selectedTask.id, updates);
-                  setSelectedTask({ ...selectedTask, ...updates });
-                }}
-                onDelete={() => {
-                  onDeleteTask(selectedTask.id);
-                  setSelectedTask(null);
-                }}
-                onSchedule={() => {
-                  onScheduleTask(selectedTask.id);
-                  setSelectedTask(null);
-                }}
-              />
-            )}
-          </AnimatePresence>
+          {/* AI Panel */}
+          <AIPanel
+            isOpen={isPanelOpen}
+            onToggle={() => setIsPanelOpen(!isPanelOpen)}
+            onAddTask={onAddTask}
+            onSendMessageRef={aiPanelSendMessageRef}
+          />
         </div>
 
         {/* AI Suggestions */}
@@ -451,11 +556,15 @@ function StatCard({ icon: Icon, label, value, color }: {
 function TaskListView({ 
   tasks, 
   onTaskClick,
-  onScheduleTask 
+  onScheduleTask,
+  onToggleStatus,
+  isTaskScheduled
 }: { 
   tasks: Task[]; 
   onTaskClick: (task: Task) => void;
   onScheduleTask: (taskId: string) => void;
+  onToggleStatus: (taskId: string) => void;
+  isTaskScheduled: (task: Task) => boolean;
 }) {
   const categoryColors: Record<Category, string> = {
     work: 'from-blue-400 to-blue-500',
@@ -521,20 +630,36 @@ function TaskListView({
                 )}
               </td>
               <td className="px-6 py-4">
-                {task.scheduledStart ? (
-                  <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 text-sm">
+                {isTaskScheduled(task) ? (
+                  <button
+                    onClick={(e) => {
+                      console.log('[TaskManagement] Scheduled button clicked for task:', task.id);
+                      e.stopPropagation();
+                      onToggleStatus(task.id);
+                    }}
+                    className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 text-sm hover:bg-emerald-200 transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                    title="Click to mark as Unscheduled"
+                  >
                     <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
                     Scheduled
-                  </span>
+                  </button>
                 ) : (
-                  <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-gray-100 text-gray-700 text-sm">
+                  <button
+                    onClick={(e) => {
+                      console.log('[TaskManagement] Unscheduled button clicked for task:', task.id);
+                      e.stopPropagation();
+                      onToggleStatus(task.id);
+                    }}
+                    className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-gray-100 text-gray-700 text-sm hover:bg-gray-200 transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-gray-400"
+                    title="Click to mark as Scheduled"
+                  >
                     <Clock className="w-4 h-4" aria-hidden="true" />
                     Unscheduled
-                  </span>
+                  </button>
                 )}
               </td>
               <td className="px-6 py-4">
-                {!task.scheduledStart && (
+                {!isTaskScheduled(task) && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -558,15 +683,17 @@ function TaskListView({
 function KanbanView({ 
   tasks, 
   onTaskClick,
-  onScheduleTask 
+  onScheduleTask,
+  isTaskScheduled
 }: { 
   tasks: Task[]; 
   onTaskClick: (task: Task) => void;
   onScheduleTask: (taskId: string) => void;
+  isTaskScheduled: (task: Task) => boolean;
 }) {
   const columns = {
-    backlog: tasks.filter(t => !t.scheduledStart),
-    scheduled: tasks.filter(t => t.scheduledStart && !t.scheduledEnd),
+    backlog: tasks.filter(t => !isTaskScheduled(t)),
+    scheduled: tasks.filter(t => isTaskScheduled(t) && !t.scheduledEnd),
     completed: tasks.filter(t => t.scheduledEnd && new Date(t.scheduledEnd) < new Date()),
   };
 
@@ -578,6 +705,7 @@ function KanbanView({
         color="purple"
         onTaskClick={onTaskClick}
         onScheduleTask={onScheduleTask}
+        isTaskScheduled={isTaskScheduled}
       />
       <KanbanColumn
         title="Scheduled"
@@ -585,6 +713,7 @@ function KanbanView({
         color="blue"
         onTaskClick={onTaskClick}
         onScheduleTask={onScheduleTask}
+        isTaskScheduled={isTaskScheduled}
       />
       <KanbanColumn
         title="Completed"
@@ -592,6 +721,7 @@ function KanbanView({
         color="emerald"
         onTaskClick={onTaskClick}
         onScheduleTask={onScheduleTask}
+        isTaskScheduled={isTaskScheduled}
       />
     </div>
   );
@@ -602,13 +732,15 @@ function KanbanColumn({
   tasks, 
   color, 
   onTaskClick,
-  onScheduleTask 
+  onScheduleTask,
+  isTaskScheduled
 }: { 
   title: string; 
   tasks: Task[]; 
   color: string;
   onTaskClick: (task: Task) => void;
   onScheduleTask: (taskId: string) => void;
+  isTaskScheduled: (task: Task) => boolean;
 }) {
   const categoryColors: Record<Category, string> = {
     work: 'from-blue-400 to-blue-500',
@@ -663,7 +795,7 @@ function KanbanColumn({
               )}
             </div>
 
-            {!task.scheduledStart && (
+            {!isTaskScheduled(task) && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, Send, X, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -10,6 +10,7 @@ interface AIPanelProps {
   isOpen: boolean;
   onToggle: () => void;
   onAddTask: (task: Task) => void;
+  onSendMessageRef?: React.MutableRefObject<((message: string) => void) | null>;
 }
 
 interface Message {
@@ -20,7 +21,7 @@ interface Message {
   approvalSummary?: ApprovalSummary;
 }
 
-export function AIPanel({ isOpen, onToggle, onAddTask }: AIPanelProps) {
+export function AIPanel({ isOpen, onToggle, onAddTask, onSendMessageRef }: AIPanelProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -85,18 +86,21 @@ export function AIPanel({ isOpen, onToggle, onAddTask }: AIPanelProps) {
     };
   };
 
-  const handleSendMessage = async () => {
-    if (!input.trim() || isLoading) return;
+  const handleSendMessageInternal = useCallback(async (messageText?: string) => {
+    const textToSend = messageText || input;
+    if (!textToSend.trim() || isLoading) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: input,
+      content: textToSend,
     };
 
     setMessages((prev) => [...prev, userMessage]);
-    const userInput = input;
-    setInput('');
+    const userInput = textToSend;
+    if (!messageText) {
+      setInput('');
+    }
     setIsLoading(true);
     setProgressMessage(null);
 
@@ -194,6 +198,24 @@ export function AIPanel({ isOpen, onToggle, onAddTask }: AIPanelProps) {
     } finally {
       setIsLoading(false);
     }
+  }, [input, isLoading, agentState]);
+
+  // Expose sendMessage function via ref
+  useEffect(() => {
+    if (onSendMessageRef) {
+      onSendMessageRef.current = (message: string) => {
+        handleSendMessageInternal(message);
+      };
+    }
+    return () => {
+      if (onSendMessageRef) {
+        onSendMessageRef.current = null;
+      }
+    };
+  }, [onSendMessageRef, handleSendMessageInternal]);
+
+  const handleSendMessage = async () => {
+    await handleSendMessageInternal();
   };
 
   const handleConfirmTask = (task: Partial<Task>) => {
