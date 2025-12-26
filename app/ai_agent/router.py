@@ -128,3 +128,22 @@ def route_by_intent_after_slots(state: AgentState) -> str:
         return "select_slots"
     else:
         return "filter_slots"
+
+
+def route_by_intent_after_normalize(state: AgentState) -> str:
+    """
+    Route based on intent type after normalizing calendar events.
+    Calendar analysis goes to calendar_insights.
+    Scheduling (habits/tasks) goes to compute_free_slots.
+    
+    Args:
+        state: Current agent state with intent_type field
+        
+    Returns:
+        "calendar_insights" for CALENDAR_ANALYSIS, "compute_free_slots" for scheduling
+    """
+    intent_type = state.get("intent_type", "UNKNOWN")
+    if intent_type == "CALENDAR_ANALYSIS":
+        return "calendar_insights"
+    else:
+        return "compute_free_slots"
