@@ -42,25 +42,29 @@ def task_analyzer(state: AgentState) -> AgentState:
     
     print(f"Task Analyzer: User message = {user_message}")
     
-    # Get current date for context
+    # Get current date and time for context
     today = datetime.now()
     today_str = today.strftime("%Y-%m-%d")
     today_day_name = today.strftime("%A")
+    today_time = today.strftime("%H:%M:%S")
+    today_datetime = today.strftime("%Y-%m-%d %H:%M:%S")
     tomorrow = today + timedelta(days=1)
     tomorrow_str = tomorrow.strftime("%Y-%m-%d")
     tomorrow_day_name = tomorrow.strftime("%A")
     
-    print(f"Task Analyzer: Today is {today_day_name}, {today_str}")
+    print(f"Task Analyzer: Today is {today_day_name}, {today_str} at {today_time}")
     print(f"Task Analyzer: Tomorrow is {tomorrow_day_name}, {tomorrow_str}")
     
     # Create simplified task analysis prompt - only extract essentials
     system_prompt = f"""You are a task analysis assistant. Analyze the user's task request and extract only the essential information needed for scheduling.
 
-CURRENT DATE CONTEXT:
+CURRENT DATE AND TIME CONTEXT:
+- Current date and time: {today_datetime} ({today_day_name})
 - Today is {today_day_name}, {today_str}
+- Current time: {today_time}
 - Tomorrow is {tomorrow_day_name}, {tomorrow_str}
 
-Use this date context to understand temporal references in the user's request (e.g., "tonight" means today's evening, "tomorrow" means {tomorrow_str}).
+Use this date and time context to understand temporal references in the user's request (e.g., "tonight" means today's evening, "tomorrow" means {tomorrow_str}, "in 2 hours" means approximately {today_time} + 2 hours).
 
 Respond with a JSON object containing:
 {{

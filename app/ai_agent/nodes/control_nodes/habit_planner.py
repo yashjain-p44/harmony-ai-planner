@@ -2,6 +2,7 @@
 
 from langchain_openai import ChatOpenAI
 import json
+from datetime import datetime, timedelta
 
 from app.ai_agent.state import AgentState
 
@@ -32,8 +33,26 @@ def habit_planner(state: AgentState) -> AgentState:
             user_message = msg.content
             break
     
+    # Get current date and time for context
+    today = datetime.now()
+    today_str = today.strftime("%Y-%m-%d")
+    today_day_name = today.strftime("%A")
+    today_time = today.strftime("%H:%M:%S")
+    today_datetime = today.strftime("%Y-%m-%d %H:%M:%S")
+    tomorrow = today + timedelta(days=1)
+    tomorrow_str = tomorrow.strftime("%Y-%m-%d")
+    tomorrow_day_name = tomorrow.strftime("%A")
+    
     # Create planning prompt
-    system_prompt = """You are a habit planning assistant. Analyze the user's request and create a structured plan.
+    system_prompt = f"""You are a habit planning assistant. Analyze the user's request and create a structured plan.
+
+CURRENT DATE AND TIME CONTEXT:
+- Current date and time: {today_datetime} ({today_day_name})
+- Today is {today_day_name}, {today_str}
+- Current time: {today_time}
+- Tomorrow is {tomorrow_day_name}, {tomorrow_str}
+
+Use this date and time context to understand temporal references in the user's request (e.g., "starting today", "for 2 weeks", "every Monday").
 
 Respond with a JSON object containing:
 {
