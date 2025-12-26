@@ -182,14 +182,16 @@ export default function App() {
 
     setIsLoadingCalendar(true);
     try {
-      // Fetch events for the next 30 days
+      // Fetch events from 10 days ago to 30 days in the future
       const now = new Date();
+      const tenDaysAgo = new Date(now);
+      tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
       const thirtyDaysLater = new Date(now);
       thirtyDaysLater.setDate(thirtyDaysLater.getDate() + 30);
 
       const response = await fetchCalendarEvents({
         calendar_id: 'primary',
-        time_min: now.toISOString(),
+        time_min: tenDaysAgo.toISOString(),
         time_max: thirtyDaysLater.toISOString(),
         max_results: 100,
         single_events: true,
