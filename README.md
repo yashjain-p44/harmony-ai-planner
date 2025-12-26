@@ -236,13 +236,13 @@ task-ai-poc/
 
 ```bash
 # Run AI agent tests
-python3 app/ai_agent/test_comprehensive.py
-python3 app/ai_agent/test_tool.py
+python3 tests/ai_agent/test_comprehensive.py
+python3 tests/ai_agent/test_tool.py
 
 # Run repository tests
-python3 app/src/test_calendar_repository.py
-python3 app/src/test_tasks_repository.py
-python3 app/src/test_firestore_repository.py
+python3 tests/src/test_calendar_repository.py
+python3 tests/src/test_tasks_repository.py
+python3 tests/src/test_firestore_repository.py
 ```
 
 ### API Testing

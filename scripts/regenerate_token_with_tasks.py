@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 # Add project root to path
-project_root = Path(__file__).parent
+project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 # Add src to path
@@ -22,7 +22,7 @@ src_path = project_root / "app" / "src"
 if str(src_path) not in sys.path:
     sys.path.insert(0, str(src_path))
 
-from google_auth_provider import GoogleAuthProvider
+from app.src.google_auth_provider import GoogleAuthProvider
 
 def main():
     """Regenerate token with both calendar and tasks scopes."""
