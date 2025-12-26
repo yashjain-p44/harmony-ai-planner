@@ -324,35 +324,56 @@ export default function App() {
   };
 
   const handleUpdateTask = async (taskId: string, updates: Partial<Task>) => {
+    console.log('[App] handleUpdateTask called');
+    console.log('[App] Task ID:', taskId);
+    console.log('[App] Updates:', updates);
+    console.log('[App] Current tasks:', tasks);
+    console.log('[App] Selected task list ID:', selectedTaskListId);
+    
     try {
       // Find the task to get its Google Task ID
       const task = tasks.find(t => t.id === taskId);
-      if (!task) return;
+      console.log('[App] Found task:', task);
+      if (!task) {
+        console.warn('[App] Task not found with ID:', taskId);
+        return;
+      }
 
       // Skip if it's a calendar event (those are managed separately)
       if (task.isFromGoogleCalendar) {
+        console.log('[App] Task is from Google Calendar, updating local state only');
         setTasks(tasks.map(t => t.id === taskId ? { ...t, ...updates } : t));
+        console.log('[App] Local state updated for calendar task');
         return;
       }
 
       // Convert updates to Google Task format
       const updatedTask = { ...task, ...updates };
+      console.log('[App] Updated task object:', updatedTask);
       const googleTaskData = convertTaskToGoogleTask(updatedTask);
+      console.log('[App] Google Task data:', googleTaskData);
       
       // Update task in Google Tasks
+      console.log('[App] Calling updateGoogleTask API...');
       const response = await updateGoogleTask(selectedTaskListId, taskId, googleTaskData);
+      console.log('[App] API response:', response);
       
       if (response.success && response.task) {
+        console.log('[App] API update successful, converting and updating state');
         // Convert back to frontend format and update state
         const updatedGoogleTask = convertGoogleTaskToTask(response.task);
+        console.log('[App] Converted Google Task:', updatedGoogleTask);
         setTasks(tasks.map(t => t.id === taskId ? updatedGoogleTask : t));
+        console.log('[App] State updated successfully');
       } else {
-        console.error('Failed to update task:', response.error);
+        console.error('[App] Failed to update task:', response.error);
         // Fallback: update local state
+        console.log('[App] Falling back to local state update');
         setTasks(tasks.map(t => t.id === taskId ? { ...t, ...updates } : t));
+        console.log('[App] Local state updated as fallback');
       }
     } catch (error) {
-      console.error('Error updating task:', error);
+      console.error('[App] Error updating task:', error);
       // Fallback: update local state
       setTasks(tasks.map(t => t.id === taskId ? { ...t, ...updates } : t));
     }
