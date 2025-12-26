@@ -13,8 +13,15 @@ def compute_free_slots(state: AgentState) -> AgentState:
     Reads: calendar_events_normalized, time_range (from planning_horizon)
     Writes: free_time_slots
     """
+    print("=" * 50)
+    print("Compute Free Slots: Starting free slot computation")
+    print("=" * 50)
+    
     normalized_events = state.get("calendar_events_normalized", [])
     planning_horizon = state.get("planning_horizon", {})
+    
+    print(f"Compute Free Slots: Number of normalized events = {len(normalized_events)}")
+    print(f"Compute Free Slots: Planning horizon = {planning_horizon}")
     
     # Get time range
     start_date = planning_horizon.get("start_date")
@@ -39,18 +46,27 @@ def compute_free_slots(state: AgentState) -> AgentState:
         if end_date.tzinfo is None:
             end_date = end_date.replace(tzinfo=timezone.utc)
     
+    print(f"Compute Free Slots: Start date = {start_date}")
+    print(f"Compute Free Slots: End date = {end_date}")
+    print(f"Compute Free Slots: Time range = {end_date - start_date}")
+    
     # Convert events to datetime ranges
     busy_periods = []
+    print(f"Compute Free Slots: Processing {len(normalized_events)} normalized events...")
     for event in normalized_events:
         try:
             event_start = datetime.fromisoformat(event["start"].replace("Z", "+00:00"))
             event_end = datetime.fromisoformat(event["end"].replace("Z", "+00:00"))
             busy_periods.append((event_start, event_end))
-        except (ValueError, KeyError):
+        except (ValueError, KeyError) as e:
+            print(f"Compute Free Slots: Skipping invalid event - {type(e).__name__}: {e}")
             continue
+    
+    print(f"Compute Free Slots: Extracted {len(busy_periods)} busy periods")
     
     # Sort busy periods by start time
     busy_periods.sort(key=lambda x: x[0])
+    print(f"Compute Free Slots: Sorted busy periods by start time")
     
     # Compute free slots
     free_slots: List[Dict] = []
@@ -58,6 +74,7 @@ def compute_free_slots(state: AgentState) -> AgentState:
     
     # Round current_time to the nearest hour for cleaner slots
     current_time = current_time.replace(minute=0, second=0, microsecond=0)
+    print(f"Compute Free Slots: Starting computation from {current_time}")
     
     for busy_start, busy_end in busy_periods:
         # If there's a gap before this busy period, it's a free slot
@@ -74,18 +91,33 @@ def compute_free_slots(state: AgentState) -> AgentState:
     
     # Add final free slot if there's time remaining
     if current_time < end_date:
+        final_slot_duration = int((end_date - current_time).total_seconds() / 60)
+        print(f"Compute Free Slots: Adding final free slot from {current_time} to {end_date} ({final_slot_duration} minutes)")
         free_slots.append({
             "start": current_time.isoformat(),
             "end": end_date.isoformat(),
-            "duration_minutes": int((end_date - current_time).total_seconds() / 60)
+            "duration_minutes": final_slot_duration
         })
     
     # If no events, the entire range is free
     if not busy_periods:
+        total_duration = int((end_date - start_date).total_seconds() / 60)
+        print(f"Compute Free Slots: No busy periods found, entire range is free ({total_duration} minutes)")
         free_slots.append({
             "start": start_date.isoformat(),
             "end": end_date.isoformat(),
-            "duration_minutes": int((end_date - start_date).total_seconds() / 60)
+            "duration_minutes": total_duration
         })
+    
+    print(f"Compute Free Slots: Computed {len(free_slots)} free time slots")
+    if free_slots:
+        total_free_time = sum(slot.get("duration_minutes", 0) for slot in free_slots)
+        print(f"Compute Free Slots: Total free time = {total_free_time} minutes ({total_free_time / 60:.2f} hours)")
+        print(f"Compute Free Slots: Sample slots (first 3):")
+        for i, slot in enumerate(free_slots[:3]):
+            print(f"  Slot {i+1}: {slot.get('start')} to {slot.get('end')} ({slot.get('duration_minutes')} minutes)")
+    
+    print("Compute Free Slots: Free slot computation complete")
+    print("=" * 50)
     
     return {"free_time_slots": free_slots}

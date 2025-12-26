@@ -354,4 +354,3 @@ For issues or questions:
 3. Check browser console for errors
 4. Review backend terminal logs
 
-
