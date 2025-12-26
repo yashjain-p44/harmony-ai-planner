@@ -12,6 +12,7 @@ An intelligent AI-powered task scheduling and calendar management system that us
 This project combines a sophisticated LangGraph-based AI agent with a modern React frontend to provide an intuitive interface for:
 - **Natural Language Task Scheduling**: Describe tasks in plain English and let the AI schedule them
 - **Habit Planning**: Automatically schedule recurring habits based on your preferences
+- **Calendar Analysis**: Get AI-powered insights about your schedule, busy periods, and free time
 - **Calendar Integration**: Seamless Google Calendar sync with conflict detection
 - **Human-in-the-Loop**: Approval workflow for scheduling decisions
 - **Smart Time Slot Finding**: AI-powered free time detection and optimization
@@ -21,6 +22,8 @@ This project combines a sophisticated LangGraph-based AI agent with a modern Rea
 ### AI Agent Capabilities
 - **Intent Classification**: Automatically understands user intent (habit scheduling, task scheduling, calendar analysis)
 - **Intelligent Planning**: Extracts task details, constraints, and preferences from natural language
+- **Calendar Analysis**: Provides insights about schedule patterns, busy periods, free time, and event summaries
+- **Insight Management**: Structures analysis requests with time windows and focus areas
 - **Conflict Detection**: Analyzes existing calendar events to find optimal time slots
 - **Approval Workflow**: Requests user confirmation before creating calendar events
 - **Error Handling**: Graceful handling of infeasible plans with clear explanations
@@ -39,6 +42,39 @@ This project combines a sophisticated LangGraph-based AI agent with a modern Rea
 - **Task Management**: Google Tasks integration
 - **Streaming Support**: Real-time chat responses via Server-Sent Events
 - **Health Monitoring**: Built-in health check endpoints
+
+## 💡 Usage Examples
+
+### Calendar Analysis
+Ask the AI agent questions about your calendar:
+
+```
+"Show me my schedule this week"
+"When am I free next week?"
+"What meetings do I have this month?"
+"Analyze my calendar for the next 7 days"
+"Show me my busy periods"
+```
+
+The AI will:
+- Extract the time window from your query
+- Fetch relevant calendar events
+- Generate insights about your schedule patterns
+- Provide analysis without modifying any events
+
+### Task Scheduling
+```
+"Schedule a meeting with John tomorrow at 2pm"
+"Add a 1-hour workout session every Monday morning"
+"Block 2 hours for deep work this Friday"
+```
+
+### Habit Planning
+```
+"Schedule daily exercise for 30 minutes"
+"Add weekly team standup every Monday at 9am"
+"Plan 1-hour reading time every evening"
+```
 
 ## 🏗️ Architecture
 
@@ -71,8 +107,9 @@ This project combines a sophisticated LangGraph-based AI agent with a modern Rea
 
 ### AI Agent Flow
 
-The AI agent uses a state machine pattern with LangGraph:
+The AI agent uses a state machine pattern with LangGraph with three main flows:
 
+#### Scheduling Flow (Habits & Tasks)
 1. **Intent Classification** → Determines user intent (habit, task, analysis)
 2. **Planning Phase** → Extracts requirements and constraints
 3. **Execution Decision** → Decides whether to execute, dry-run, or cancel
@@ -83,6 +120,13 @@ The AI agent uses a state machine pattern with LangGraph:
 8. **Event Creation** → Creates calendar events if approved
 9. **Summary** → Provides completion summary
 
+#### Calendar Analysis Flow
+1. **Intent Classification** → Identifies calendar analysis intent
+2. **Insight Management** → Extracts analysis request details (time window, focus areas, analysis type)
+3. **Calendar Fetching** → Retrieves events for the specified time window
+4. **Event Normalization** → Normalizes and timezone-aligns events
+5. **Insights Generation** → Generates AI-powered insights about the calendar
+
 ### Project Structure
 
 ```
@@ -92,7 +136,8 @@ task-ai-poc/
 │   │   ├── graph.py       # Agent graph definition
 │   │   ├── state.py       # State schema
 │   │   ├── router.py      # Routing logic
-│   │   ├── nodes/         # Agent nodes (intent, planning, execution)
+│   │   ├── nodes/         # Agent nodes (intent, planning, execution, insights)
+│   │   │   └── control_nodes/  # Control nodes (insight_manager, calendar_insights)
 │   │   └── tools/         # Calendar tools
 │   ├── api/               # Flask REST API
 │   │   ├── app.py         # Main API server
