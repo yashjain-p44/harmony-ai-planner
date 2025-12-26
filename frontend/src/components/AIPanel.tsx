@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, Send, X, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -34,6 +34,8 @@ export function AIPanel({ isOpen, onToggle, onAddTask, onSendMessageRef }: AIPan
   const [isLoading, setIsLoading] = useState(false);
   const [agentState, setAgentState] = useState<AgentState | null>(null);
   const [progressMessage, setProgressMessage] = useState<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   const parseTaskFromMessage = (message: string): Partial<Task> | null => {
     const categories: Record<string, Category> = {
@@ -213,6 +215,16 @@ export function AIPanel({ isOpen, onToggle, onAddTask, onSendMessageRef }: AIPan
       }
     };
   }, [onSendMessageRef, handleSendMessageInternal]);
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    // Use setTimeout to ensure DOM has updated
+    setTimeout(() => {
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }, 100);
+  }, [messages, isLoading, progressMessage]);
 
   const handleSendMessage = async () => {
     await handleSendMessageInternal();
@@ -410,7 +422,7 @@ export function AIPanel({ isOpen, onToggle, onAddTask, onSendMessageRef }: AIPan
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-gradient-to-b from-white/30 to-white/10">
+        <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-6 space-y-4 bg-gradient-to-b from-white/30 to-white/10">
           {messages.map((message) => {
             // Don't render message bubble if content is empty (placeholder for loading)
             if (!message.content && isLoading) {
@@ -482,6 +494,7 @@ export function AIPanel({ isOpen, onToggle, onAddTask, onSendMessageRef }: AIPan
             </motion.div>
             );
           })}
+          <div ref={messagesEndRef} />
           {isLoading && progressMessage && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
