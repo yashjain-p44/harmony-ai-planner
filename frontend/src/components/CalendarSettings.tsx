@@ -9,7 +9,7 @@ interface CalendarSettingsProps {
   onClose: () => void;
 }
 
-export function CalendarSettings({ isConnected, userEmail = 'user@gmail.com', onDisconnect, onClose }: CalendarSettingsProps) {
+export function CalendarSettings({ isConnected, userEmail = 'yashjaincp@gmail.com', onDisconnect, onClose }: CalendarSettingsProps) {
   const [syncDirection, setSyncDirection] = useState<'two-way' | 'read-only'>('two-way');
   const [writeEvents, setWriteEvents] = useState(true);
   const [modifyEvents, setModifyEvents] = useState(true);

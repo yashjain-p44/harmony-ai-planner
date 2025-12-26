@@ -321,14 +321,14 @@ function OAuthScreen({ onSuccess, onCancel }: { onSuccess: () => void; onCancel:
           <button
             onClick={onSuccess}
             className="w-full bg-white rounded-xl p-4 border-2 border-gray-300 hover:border-blue-400 hover:bg-blue-50 transition-all flex items-center gap-3 focus:outline-none focus:ring-4 focus:ring-blue-300"
-            aria-label="Select Google account user@gmail.com"
+            aria-label="Select Google account yashjaincp@gmail.com"
           >
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-400 flex items-center justify-center text-white font-semibold" aria-hidden="true">
-              U
+              Y
             </div>
             <div className="text-left">
-              <div className="text-gray-900 font-semibold">User Name</div>
-              <div className="text-sm text-gray-600">user@gmail.com</div>
+              <div className="text-gray-900 font-semibold">Yash Jain</div>
+              <div className="text-sm text-gray-600">yashjaincp@gmail.com</div>
             </div>
           </button>
 
