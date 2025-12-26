@@ -369,7 +369,7 @@ export function AIPanel({ isOpen, onToggle, onAddTask, onSendMessageRef }: AIPan
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0 }}
             onClick={onToggle}
-            className="fixed right-8 top-1/2 -translate-y-1/2 w-16 h-16 rounded-full bg-gradient-to-br from-blue-300 via-purple-300 to-pink-300 flex items-center justify-center shadow-lg z-50"
+            className="fixed right-8 bottom-8 w-16 h-16 rounded-full bg-gradient-to-br from-blue-300 via-purple-300 to-pink-300 flex items-center justify-center shadow-lg z-50"
             whileHover={{ scale: 1.1, boxShadow: '0 8px 30px rgba(147, 197, 253, 0.4)' }}
             whileTap={{ scale: 0.9 }}
           >
