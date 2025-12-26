@@ -30,6 +30,7 @@ class AgentState(TypedDict):
 
      # Planning artifacts
     habit_definition: Annotated[dict, "Structured definition of habit (what, frequency, duration_minutes, max_duration_minutes, buffer_minutes, num_occurrences)"]
+    task_definition: Annotated[dict, "Structured definition of task (task_name, priority, estimated_time_minutes, description)"]
     time_constraints: Annotated[dict, "Time-of-day, days-of-week, exclusions"]
     planning_horizon: Annotated[dict, "Time window for analysis (e.g., next 30 days)"]
     estimated_commitment: Annotated[dict, "Expected time per session / per week"]
