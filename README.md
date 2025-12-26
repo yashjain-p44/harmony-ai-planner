@@ -109,7 +109,7 @@ The AI will:
 
 The AI agent uses a state machine pattern with LangGraph to orchestrate complex scheduling workflows. The following diagram illustrates the complete agent graph with all nodes and routing paths:
 
-![AI Agent Graph Nodes and Routing](/ai_agent_graph_nodes_routing.png)
+![AI Agent Graph Nodes and Routing](ai_agent_graph_nodes_routing.png)
 
 #### Flow Overview
 
