@@ -84,12 +84,47 @@ def route_by_approval_state(state: AgentState) -> str:
     """
     Route based on human approval state.
     
+    For CHANGES_REQUESTED, routes based on intent type:
+    - Tasks: go directly to select_slots (skip filter_slots)
+    - Habits: go to filter_slots first
+    
     Args:
-        state: Current agent state with approval_state field
+        state: Current agent state with approval_state and intent_type fields
         
     Returns:
-        Approval state string: "APPROVED", "REJECTED", "CHANGES_REQUESTED", 
+        Node name or approval state string: "APPROVED", "REJECTED", 
+        "select_slots" (for tasks with CHANGES_REQUESTED), 
+        "filter_slots" (for habits with CHANGES_REQUESTED),
         or "PENDING" (default)
     """
     approval_state = state.get("approval_state", "PENDING")
+    
+    # For CHANGES_REQUESTED, route based on intent type
+    # Tasks skip filter_slots, habits go through filter_slots
+    if approval_state == "CHANGES_REQUESTED":
+        intent_type = state.get("intent_type", "UNKNOWN")
+        if intent_type == "TASK_SCHEDULE":
+            return "select_slots"  # Tasks go directly to select_slots
+        else:
+            return "filter_slots"  # Habits go through filter_slots
+    
     return approval_state
+
+
+def route_by_intent_after_slots(state: AgentState) -> str:
+    """
+    Route based on intent type after computing free slots.
+    Tasks skip filter_slots and go directly to select_slots.
+    Habits go through filter_slots first.
+    
+    Args:
+        state: Current agent state with intent_type field
+        
+    Returns:
+        "select_slots" for tasks, "filter_slots" for habits
+    """
+    intent_type = state.get("intent_type", "UNKNOWN")
+    if intent_type == "TASK_SCHEDULE":
+        return "select_slots"
+    else:
+        return "filter_slots"

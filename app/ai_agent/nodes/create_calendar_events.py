@@ -18,11 +18,23 @@ def create_calendar_events(state: AgentState) -> AgentState:
     print("[create_calendar_events] Starting to create calendar events...")
     selected_slots = state.get("selected_slots", [])
     habit_definition = state.get("habit_definition", {})
+    task_definition = state.get("task_definition", {})
+    intent_type = state.get("intent_type", "UNKNOWN")
     
-    habit_name = habit_definition.get("habit_name", "Scheduled Habit")
-    description = habit_definition.get("description", "")
+    # Determine if this is a task or habit
+    is_task = bool(task_definition) or intent_type == "TASK_SCHEDULE"
     
-    print(f"[create_calendar_events] Creating events for habit: {habit_name}")
+    if is_task:
+        # For tasks: use task_name from task_definition
+        event_name = task_definition.get("task_name", "Scheduled Task")
+        description = task_definition.get("description", "")
+        print(f"[create_calendar_events] Creating event for task: {event_name}")
+    else:
+        # For habits: use habit_name from habit_definition
+        event_name = habit_definition.get("habit_name", "Scheduled Habit")
+        description = habit_definition.get("description", "")
+        print(f"[create_calendar_events] Creating events for habit: {event_name}")
+    
     print(f"[create_calendar_events] Number of slots to create events for: {len(selected_slots)}")
     
     created_events: List[Dict] = []
@@ -41,7 +53,7 @@ def create_calendar_events(state: AgentState) -> AgentState:
         try:
             # Use the calendar tool to create the event
             result_json = create_calendar_event_tool.invoke({
-                "summary": habit_name,
+                "summary": event_name,
                 "start_time": start_time,
                 "end_time": end_time,
                 "description": description,
@@ -55,7 +67,7 @@ def create_calendar_events(state: AgentState) -> AgentState:
                 event_data = result.get("event", {})
                 created_event = {
                     "id": event_data.get("id"),
-                    "summary": event_data.get("summary", habit_name),
+                    "summary": event_data.get("summary", event_name),
                     "description": event_data.get("description", description),
                     "start": event_data.get("start"),
                     "end": event_data.get("end"),

@@ -41,9 +41,15 @@ export interface AgentState {
 export interface ApprovalSummary {
   summary?: string;
   selected_slots?: any[];
+  // Habit-specific fields
   habit_name?: string;
   frequency?: string;
   duration_minutes?: number;
+  // Task-specific fields
+  task_name?: string;
+  priority?: string;
+  estimated_time_minutes?: number;
+  description?: string;
   slots_summary?: Array<{
     slot_number: number;
     date: string;

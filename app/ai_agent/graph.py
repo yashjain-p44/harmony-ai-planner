@@ -17,8 +17,8 @@ from langgraph.graph import StateGraph, END
 
 from app.ai_agent.state import AgentState
 from app.ai_agent.nodes import fetch_calendar_events, normalize_calendar_events, compute_free_slots, filter_slots, select_slots, approval_node, create_calendar_events, post_schedule_summary
-from app.ai_agent.nodes.control_nodes import intent_classifier, habit_planner, execution_decider, clarification_agent, explanation_agent
-from app.ai_agent.router import route_by_intent, route_by_plan_status, route_by_execution_decision, route_by_approval_state
+from app.ai_agent.nodes.control_nodes import intent_classifier, habit_planner, task_analyzer, execution_decider, clarification_agent, explanation_agent
+from app.ai_agent.router import route_by_intent, route_by_plan_status, route_by_execution_decision, route_by_approval_state, route_by_intent_after_slots
 
 
 def create_agent():
@@ -29,16 +29,17 @@ def create_agent():
     1. Entry: intent_classifier - Determines user intent
     2. Routing by intent:
        - HABIT_SCHEDULE → habit_planner
-       - TASK_SCHEDULE → END (placeholder for future implementation)
+       - TASK_SCHEDULE → task_analyzer
        - CALENDAR_ANALYSIS → END (placeholder for future implementation)
        - UNKNOWN → clarification_agent
     3. For habits: habit_planner → execution_decider (via plan_status routing)
-    4. Execution decision routing:
+    4. For tasks: task_analyzer → execution_decider (via plan_status routing)
+    5. Execution decision routing:
        - EXECUTE → fetch_calendar_events → ... → create_calendar_events
        - DRY_RUN → explanation_agent
        - CANCEL → END
-    5. Approval workflow: approval_node → create_calendar_events (if approved)
-    6. Final: post_schedule_summary → END
+    6. Approval workflow: approval_node → create_calendar_events (if approved)
+    7. Final: post_schedule_summary → END
     
     Returns:
         Compiled StateGraph ready to use for processing agent requests.
@@ -54,6 +55,7 @@ def create_agent():
     # Register nodes
     graph.add_node("intent_classifier", intent_classifier.intent_classifier)
     graph.add_node("habit_planner", habit_planner.habit_planner)
+    graph.add_node("task_analyzer", task_analyzer.task_analyzer)
     graph.add_node("execution_decider", execution_decider.execution_decider)
     graph.add_node("clarification_agent", clarification_agent.clarification_agent)
     graph.add_node("explanation_agent", explanation_agent.explanation_agent)
@@ -76,7 +78,7 @@ def create_agent():
         route_by_intent,
         {
             "HABIT_SCHEDULE": "habit_planner",
-            "TASK_SCHEDULE": END,            # placeholder
+            "TASK_SCHEDULE": "task_analyzer",
             "CALENDAR_ANALYSIS": END,         # placeholder
             "UNKNOWN": "clarification_agent",
         },
@@ -85,6 +87,17 @@ def create_agent():
     # Conditional routing — planning
     graph.add_conditional_edges(
         "habit_planner",
+        route_by_plan_status,
+        {
+            "PLAN_READY": "execution_decider",
+            "NEEDS_CLARIFICATION": "clarification_agent",
+            "PLAN_INFEASIBLE": "explanation_agent",
+        },
+    )
+
+    # Conditional routing — task planning
+    graph.add_conditional_edges(
+        "task_analyzer",
         route_by_plan_status,
         {
             "PLAN_READY": "execution_decider",
@@ -107,7 +120,19 @@ def create_agent():
     # Static execution pipeline
     graph.add_edge("fetch_calendar_events", "normalize_calendar_events")
     graph.add_edge("normalize_calendar_events", "compute_free_slots")
-    graph.add_edge("compute_free_slots", "filter_slots")
+    
+    # Conditional routing — after computing free slots
+    # Tasks skip filter_slots, habits go through filter_slots
+    graph.add_conditional_edges(
+        "compute_free_slots",
+        route_by_intent_after_slots,
+        {
+            "select_slots": "select_slots",  # Tasks go directly to select_slots
+            "filter_slots": "filter_slots",  # Habits go through filter_slots first
+        },
+    )
+    
+    # Habits continue from filter_slots to select_slots
     graph.add_edge("filter_slots", "select_slots")
     graph.add_edge("select_slots", "approval_node")
     
@@ -118,7 +143,8 @@ def create_agent():
         {
             "APPROVED": "create_calendar_events",
             "REJECTED": "execution_decider",
-            "CHANGES_REQUESTED": "filter_slots",
+            "select_slots": "select_slots",  # For tasks when CHANGES_REQUESTED
+            "filter_slots": "filter_slots",  # For habits when CHANGES_REQUESTED
             "PENDING": END,  # End the graph if the approval is pending
         },
     )

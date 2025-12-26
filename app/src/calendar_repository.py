@@ -30,7 +30,7 @@ class GoogleCalendarRepository:
     """
     
     # Scopes for read and write access to calendar
-    CALENDAR_SCOPES = ["https://www.googleapis.com/auth/calendar"]
+    CALENDAR_SCOPES = ["https://www.googleapis.com/auth/calendar", "https://www.googleapis.com/auth/tasks"]
     
     def __init__(
         self,
