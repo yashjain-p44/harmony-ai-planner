@@ -1,0 +1,218 @@
+Create a comprehensive flow diagram for an AI agent graph that processes user scheduling requests. The diagram should show all nodes, routing logic, and conditional edges.
+
+## GRAPH STRUCTURE OVERVIEW
+
+The graph is a state machine that processes user requests through multiple stages: intent classification, planning, execution decision, calendar operations, approval workflow, event creation, and calendar analysis.
+
+## ENTRY POINT
+
+The graph starts at: **intent_classifier** (entry node)
+
+## NODES AND THEIR FUNCTIONS
+
+### Control Nodes (Decision Making)
+
+1. **intent_classifier**
+   - Purpose: Classifies user intent from messages
+   - Outputs: intent_type (HABIT_SCHEDULE, TASK_SCHEDULE, CALENDAR_ANALYSIS, UNKNOWN)
+   - Has conditional routing to next nodes
+
+2. **habit_planner**
+   - Purpose: Plans recurring habit schedules
+   - Inputs: messages, intent_type
+   - Outputs: habit_definition, plan_status, time_constraints, planning_horizon
+   - Has conditional routing based on plan_status
+
+3. **task_analyzer**
+   - Purpose: Analyzes and plans one-time task schedules
+   - Inputs: messages, intent_type
+   - Outputs: task_definition, plan_status, time_constraints, planning_horizon
+   - Has conditional routing based on plan_status
+
+4. **execution_decider**
+   - Purpose: Decides whether to execute, dry-run, or cancel the plan
+   - Inputs: habit_definition or task_definition, plan_status
+   - Outputs: execution_decision (EXECUTE, DRY_RUN, CANCEL)
+   - Has conditional routing based on execution_decision
+
+5. **clarification_agent**
+   - Purpose: Asks user for clarification when intent is unclear or planning needs more info
+   - Terminal node (ends graph)
+
+6. **explanation_agent**
+   - Purpose: Explains why scheduling cannot proceed (dry-run or infeasible plan)
+   - Terminal node (ends graph)
+
+7. **insight_manager**
+   - Purpose: Extracts and structures analysis request details from user input for calendar analysis
+   - Inputs: messages, intent_type
+   - Outputs: insight_request (user_prompt, intent, analysis_type, time_window_description, focus_areas), planning_horizon
+   - Static edge to: fetch_calendar_events
+
+8. **calendar_insights**
+   - Purpose: Provides analysis and insights about the user's calendar (read-only, does not modify events)
+   - Inputs: messages, calendar_events_raw, calendar_events_normalized, insight_request
+   - Outputs: messages (append assistant insights)
+   - Terminal node (ends graph)
+
+### Calendar Processing Nodes (Sequential Pipeline)
+
+9. **fetch_calendar_events**
+   - Purpose: Fetches raw calendar events from provider
+   - Outputs: calendar_events_raw
+   - Static edge to: normalize_calendar_events
+
+10. **normalize_calendar_events**
+    - Purpose: Normalizes and timezone-aligns calendar events
+    - Inputs: calendar_events_raw
+    - Outputs: calendar_events_normalized
+    - Has conditional routing based on intent_type (calendar analysis vs scheduling)
+
+11. **compute_free_slots**
+   - Purpose: Computes all available free time slots
+   - Inputs: calendar_events_normalized
+   - Outputs: free_time_slots
+   - Has conditional routing based on intent_type (tasks vs habits)
+
+12. **filter_slots**
+    - Purpose: Filters free slots based on habit constraints (time-of-day, days-of-week, exclusions)
+    - Inputs: free_time_slots, time_constraints
+    - Outputs: filtered_slots
+    - Only used for habits (tasks skip this node)
+    - Static edge to: select_slots
+
+13. **select_slots**
+    - Purpose: Selects final time slots for scheduling
+    - Inputs: filtered_slots (for habits) or free_time_slots (for tasks)
+    - Outputs: selected_slots
+    - Static edge to: approval_node
+
+### Approval and Execution Nodes
+
+14. **approval_node**
+    - Purpose: Handles human approval workflow for selected slots
+    - Inputs: selected_slots, habit_definition or task_definition, approval_state, approval_feedback
+    - Outputs: approval_state, explanation_payload, messages
+    - Has conditional routing based on approval_state and intent_type
+
+15. **create_calendar_events**
+    - Purpose: Creates calendar events in the provider system
+    - Inputs: selected_slots, habit_definition or task_definition
+    - Outputs: created_events
+    - Static edge to: post_schedule_summary
+
+16. **post_schedule_summary**
+    - Purpose: Generates final summary of scheduled events
+    - Terminal node (ends graph)
+
+## ROUTING LOGIC AND CONDITIONAL EDGES
+
+### 1. After intent_classifier (route_by_intent)
+   - Routes based on intent_type:
+     - "HABIT_SCHEDULE" → habit_planner
+     - "TASK_SCHEDULE" → task_analyzer
+     - "CALENDAR_ANALYSIS" → insight_manager
+     - "UNKNOWN" → clarification_agent
+
+### 2. After habit_planner (route_by_plan_status)
+   - Routes based on plan_status:
+     - "PLAN_READY" → execution_decider
+     - "NEEDS_CLARIFICATION" → clarification_agent
+     - "PLAN_INFEASIBLE" → explanation_agent
+
+### 3. After task_analyzer (route_by_plan_status)
+   - Routes based on plan_status:
+     - "PLAN_READY" → execution_decider
+     - "NEEDS_CLARIFICATION" → clarification_agent
+     - "PLAN_INFEASIBLE" → explanation_agent
+
+### 4. After execution_decider (route_by_execution_decision)
+   - Routes based on execution_decision:
+     - "EXECUTE" → fetch_calendar_events
+     - "DRY_RUN" → explanation_agent
+     - "CANCEL" → END
+
+### 5. After normalize_calendar_events (route_by_intent_after_normalize)
+   - Routes based on intent_type:
+     - "CALENDAR_ANALYSIS" → calendar_insights (for calendar analysis flow)
+     - "HABIT_SCHEDULE" or "TASK_SCHEDULE" → compute_free_slots (for scheduling flows)
+
+### 6. After compute_free_slots (route_by_intent_after_slots)
+   - Routes based on intent_type:
+     - "TASK_SCHEDULE" → select_slots (tasks skip filter_slots)
+     - "HABIT_SCHEDULE" → filter_slots (habits go through filter_slots first)
+
+### 7. After approval_node (route_by_approval_state)
+   - Routes based on approval_state:
+     - "APPROVED" → create_calendar_events
+     - "REJECTED" → execution_decider (allows re-planning)
+     - "CHANGES_REQUESTED" → routes based on intent_type:
+       - "TASK_SCHEDULE" → select_slots (tasks go directly back to slot selection)
+       - "HABIT_SCHEDULE" → filter_slots (habits go back to filtering)
+     - "PENDING" → END (waits for user input)
+
+## STATIC EDGES (No Conditional Logic)
+
+1. insight_manager → fetch_calendar_events (for calendar analysis flow)
+2. fetch_calendar_events → normalize_calendar_events
+3. filter_slots → select_slots (only for habits)
+4. select_slots → approval_node
+5. create_calendar_events → post_schedule_summary
+
+## TERMINAL NODES (End Graph)
+
+- clarification_agent → END
+- explanation_agent → END
+- calendar_insights → END
+- post_schedule_summary → END
+- END (from CANCEL execution decision)
+- END (from PENDING approval state)
+
+## KEY FLOW PATTERNS
+
+### Habit Scheduling Flow:
+intent_classifier → habit_planner → execution_decider → fetch_calendar_events → normalize_calendar_events → compute_free_slots → filter_slots → select_slots → approval_node → create_calendar_events → post_schedule_summary
+
+### Task Scheduling Flow:
+intent_classifier → task_analyzer → execution_decider → fetch_calendar_events → normalize_calendar_events → compute_free_slots → select_slots → approval_node → create_calendar_events → post_schedule_summary
+
+### Calendar Analysis Flow:
+intent_classifier → insight_manager → fetch_calendar_events → normalize_calendar_events → calendar_insights → END
+
+### Key Differences:
+- Habits go through filter_slots (applies time constraints)
+- Tasks skip filter_slots and go directly to select_slots
+- Calendar analysis goes through insight_manager to extract request details, then fetches and normalizes events before generating insights
+
+### Approval Loop:
+- When CHANGES_REQUESTED: routes back to filter_slots (habits) or select_slots (tasks)
+- When REJECTED: routes back to execution_decider for re-planning
+
+## VISUAL REQUIREMENTS
+
+The diagram should:
+1. Show all nodes as distinct shapes (rectangles for processing nodes, diamonds for decision points)
+2. Use different colors/styles for: control nodes, calendar processing nodes, approval/execution nodes
+3. Clearly label all conditional edges with their conditions
+4. Show static edges differently from conditional edges
+5. Indicate terminal nodes clearly
+6. Show the entry point prominently
+7. Use arrows to show flow direction
+8. Group related nodes visually (e.g., calendar processing pipeline)
+9. Highlight the key branching points:
+    - Tasks vs habits after compute_free_slots
+    - Calendar analysis vs scheduling after normalize_calendar_events
+10. Show the approval feedback loop clearly
+11. Show the calendar analysis flow as a distinct path from scheduling flows
+
+## STATE INFORMATION
+
+The graph maintains state including:
+- messages (conversation history)
+- intent_type, plan_status, execution_decision, approval_state
+- habit_definition, task_definition, time_constraints
+- calendar_events_raw, calendar_events_normalized, free_time_slots, filtered_slots, selected_slots, created_events
+- approval_feedback, explanation_payload
+- insight_request (for calendar analysis: user_prompt, intent, analysis_type, time_window_description, focus_areas)
+- planning_horizon (time window with start_date and end_date)
+

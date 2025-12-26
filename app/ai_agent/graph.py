@@ -17,8 +17,8 @@ from langgraph.graph import StateGraph, END
 
 from app.ai_agent.state import AgentState
 from app.ai_agent.nodes import fetch_calendar_events, normalize_calendar_events, compute_free_slots, filter_slots, select_slots, approval_node, create_calendar_events, post_schedule_summary
-from app.ai_agent.nodes.control_nodes import intent_classifier, habit_planner, task_analyzer, execution_decider, clarification_agent, explanation_agent
-from app.ai_agent.router import route_by_intent, route_by_plan_status, route_by_execution_decision, route_by_approval_state, route_by_intent_after_slots
+from app.ai_agent.nodes.control_nodes import intent_classifier, habit_planner, task_analyzer, execution_decider, clarification_agent, explanation_agent, calendar_insights, insight_manager
+from app.ai_agent.router import route_by_intent, route_by_plan_status, route_by_execution_decision, route_by_approval_state, route_by_intent_after_slots, route_by_intent_after_normalize
 
 
 def create_agent():
@@ -30,7 +30,7 @@ def create_agent():
     2. Routing by intent:
        - HABIT_SCHEDULE → habit_planner
        - TASK_SCHEDULE → task_analyzer
-       - CALENDAR_ANALYSIS → END (placeholder for future implementation)
+       - CALENDAR_ANALYSIS → insight_manager → fetch_calendar_events → normalize_calendar_events → calendar_insights → END
        - UNKNOWN → clarification_agent
     3. For habits: habit_planner → execution_decider (via plan_status routing)
     4. For tasks: task_analyzer → execution_decider (via plan_status routing)
@@ -59,6 +59,8 @@ def create_agent():
     graph.add_node("execution_decider", execution_decider.execution_decider)
     graph.add_node("clarification_agent", clarification_agent.clarification_agent)
     graph.add_node("explanation_agent", explanation_agent.explanation_agent)
+    graph.add_node("insight_manager", insight_manager.insight_manager)
+    graph.add_node("calendar_insights", calendar_insights.calendar_insights)
 
     graph.add_node("fetch_calendar_events", fetch_calendar_events.fetch_calendar_events)
     graph.add_node("normalize_calendar_events", normalize_calendar_events.normalize_calendar_events)
@@ -79,7 +81,7 @@ def create_agent():
         {
             "HABIT_SCHEDULE": "habit_planner",
             "TASK_SCHEDULE": "task_analyzer",
-            "CALENDAR_ANALYSIS": END,         # placeholder
+            "CALENDAR_ANALYSIS": "insight_manager",
             "UNKNOWN": "clarification_agent",
         },
     )
@@ -119,7 +121,21 @@ def create_agent():
 
     # Static execution pipeline
     graph.add_edge("fetch_calendar_events", "normalize_calendar_events")
-    graph.add_edge("normalize_calendar_events", "compute_free_slots")
+    
+    # Calendar analysis pipeline
+    graph.add_edge("insight_manager", "fetch_calendar_events")
+    
+    # After normalize_calendar_events, route based on intent
+    # For CALENDAR_ANALYSIS: normalize_calendar_events → calendar_insights
+    # For scheduling: normalize_calendar_events → compute_free_slots
+    graph.add_conditional_edges(
+        "normalize_calendar_events",
+        route_by_intent_after_normalize,
+        {
+            "calendar_insights": "calendar_insights",  # For CALENDAR_ANALYSIS
+            "compute_free_slots": "compute_free_slots",  # For scheduling (HABIT_SCHEDULE, TASK_SCHEDULE)
+        },
+    )
     
     # Conditional routing — after computing free slots
     # Tasks skip filter_slots, habits go through filter_slots
@@ -155,6 +171,7 @@ def create_agent():
     graph.add_edge("post_schedule_summary", END)
     graph.add_edge("clarification_agent", END)
     graph.add_edge("explanation_agent", END)
+    graph.add_edge("calendar_insights", END)
     
     # Compile the graph
     return graph.compile()

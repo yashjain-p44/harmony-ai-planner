@@ -57,4 +57,7 @@ class AgentState(TypedDict):
     ]], "Current state of approval for selected slots"]
     approval_feedback: Annotated[Optional[str], "Feedback from approval (rejection reason or suggested changes)"]
     
+    # Calendar analysis
+    insight_request: Annotated[Optional[dict], "Structured analysis request details (user_prompt, intent, analysis_type, time_window_description, focus_areas)"]
+    
     # Tool calls and results are handled through messages (AIMessage with tool_calls, ToolMessage responses)
