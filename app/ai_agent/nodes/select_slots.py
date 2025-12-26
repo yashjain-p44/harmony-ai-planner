@@ -63,17 +63,19 @@ def select_slots(state: AgentState) -> AgentState:
                 user_message = msg.content
                 break
         
-        # Get current date for temporal reference
+        # Get current date and time for temporal reference
         today = datetime.now()
         today_str = today.strftime("%Y-%m-%d")
         today_day_name = today.strftime("%A")
+        today_time = today.strftime("%H:%M:%S")
+        today_datetime = today.strftime("%Y-%m-%d %H:%M:%S")
         tomorrow = today + timedelta(days=1)
         tomorrow_str = tomorrow.strftime("%Y-%m-%d")
         tomorrow_day_name = tomorrow.strftime("%A")
         
         print(f"Select Slots: Task name = {task_name}")
         print(f"Select Slots: Estimated time = {estimated_time_minutes} minutes")
-        print(f"Select Slots: Today is {today_day_name}, {today_str}")
+        print(f"Select Slots: Today is {today_day_name}, {today_str} at {today_time}")
         print(f"Select Slots: Tomorrow is {tomorrow_day_name}, {tomorrow_str}")
         print(f"Select Slots: User's original request = {user_message[:100]}..." if len(user_message) > 100 else f"Select Slots: User's original request = {user_message}")
         
@@ -143,15 +145,20 @@ def select_slots(state: AgentState) -> AgentState:
         # Task-specific prompt - simplified and open-ended
         system_prompt = f"""You are an intelligent scheduling assistant specializing in task scheduling. Your goal is to select the optimal time slot for a single task based on the user's original request.
 
-=== CURRENT DATE CONTEXT ===
+=== CURRENT DATE AND TIME CONTEXT ===
+Current date and time: {today_datetime} ({today_day_name})
 Today is {today_day_name}, {today_str}
+Current time: {today_time}
 Tomorrow is {tomorrow_day_name}, {tomorrow_str}
 
-Use this date context to understand temporal references:
+Use this date and time context to understand temporal references:
 - "tonight" means today ({today_str}) in the evening (after 5 PM)
 - "today" means {today_str}
 - "tomorrow" means {tomorrow_str}
+- "in 2 hours" means approximately {today_time} + 2 hours (calculate from current time)
+- "later today" means sometime on {today_str} after {today_time}
 - When user mentions specific dates, compare them to today's date ({today_str})
+- When user mentions specific times, compare them to current time ({today_time})
 
 === USER'S ORIGINAL REQUEST ===
 "{user_message}"
@@ -186,11 +193,14 @@ Based on the user's original request above, understand and apply:
 
 1. TEMPORAL REQUIREMENTS (HIGHEST PRIORITY):
    - Carefully read the user's request to understand WHEN they want the task scheduled
-   - Remember: Today is {today_str} ({today_day_name}), Tomorrow is {tomorrow_str} ({tomorrow_day_name})
+   - Remember: Current date and time is {today_datetime} ({today_day_name}), Today is {today_str} ({today_day_name}), Current time is {today_time}, Tomorrow is {tomorrow_str} ({tomorrow_day_name})
    - If they say "tonight": ONLY consider free slots on {today_str} in the evening (after 5 PM). Do NOT schedule for future dates.
    - If they say "today": ONLY consider free slots on {today_str}. Do NOT schedule for {tomorrow_str} or future dates.
    - If they say "tomorrow": ONLY consider free slots on {tomorrow_str}. Do NOT schedule for {today_str} or dates beyond {tomorrow_str}.
+   - If they say "in 2 hours" or similar relative time: Calculate from current time ({today_time}) and find slots that match
+   - If they say "later today": Consider slots on {today_str} after {today_time}
    - If they mention a specific date (e.g., "Dec 26", "January 5"): Parse the date and ONLY consider free slots on that exact date
+   - If they mention a specific time (e.g., "at 3 PM"): Compare to current time ({today_time}) to determine if it's today or a future date
    - If they say "this week" or "next week": Calculate from today ({today_str}) and prioritize slots within that timeframe
    - Temporal requirements are NON-NEGOTIABLE - if user says "tonight" and no slots are available on {today_str}, you must still respect the constraint
    - Check the date field in each free slot - only consider slots that match the temporal requirement
