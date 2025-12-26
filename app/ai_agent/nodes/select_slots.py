@@ -20,12 +20,22 @@ def select_slots(state: AgentState) -> AgentState:
     print("Select Slots: Starting to select final slots")
     print("=" * 50)
     
-    candidate_slots = state.get("filtered_slots", [])
     habit_definition = state.get("habit_definition", {})
     task_definition = state.get("task_definition", {})
     intent_type = state.get("intent_type", "UNKNOWN")
     
-    print(f"Select Slots: Number of candidate slots = {len(candidate_slots)}")
+    # Determine if this is a task or habit
+    is_task = bool(task_definition) or intent_type == "TASK_SCHEDULE"
+    
+    # For tasks: use free_time_slots directly (skip filter_slots)
+    # For habits: use filtered_slots (from filter_slots node)
+    if is_task:
+        candidate_slots = state.get("free_time_slots", [])
+        print(f"Select Slots: Using free_time_slots (TASK mode) - {len(candidate_slots)} slots")
+    else:
+        candidate_slots = state.get("filtered_slots", [])
+        print(f"Select Slots: Using filtered_slots (HABIT mode) - {len(candidate_slots)} slots")
+    
     print(f"Select Slots: Intent type = {intent_type}")
     print(f"Select Slots: Has habit_definition = {bool(habit_definition)}")
     print(f"Select Slots: Has task_definition = {bool(task_definition)}")
@@ -34,9 +44,6 @@ def select_slots(state: AgentState) -> AgentState:
         print("Select Slots: No candidate slots available, returning empty selection")
         print("=" * 50)
         return {"selected_slots": []}
-    
-    # Determine if this is a task or habit
-    is_task = bool(task_definition) or intent_type == "TASK_SCHEDULE"
     
     if is_task:
         # Task-specific logic: select only ONE slot
@@ -115,32 +122,119 @@ def select_slots(state: AgentState) -> AgentState:
     
     # Create different prompts for tasks vs habits
     if is_task:
-        # Task-specific prompt
-        system_prompt = f"""You are a smart scheduling assistant. Select the best time slot for scheduling a task.
+        # Task-specific prompt - comprehensive and high quality
+        system_prompt = f"""You are an intelligent scheduling assistant specializing in task scheduling. Your goal is to select the optimal time slot for a single task based on all available information.
 
-Task Requirements:
-- Name: {task_name}
-- Priority: {priority}
-- Estimated duration: {estimated_time_minutes} minutes
-- Description: {task_description if task_description else 'No description provided'}
+=== TASK INFORMATION ===
+Task Name: {task_name}
+Priority Level: {priority}
+Estimated Duration: {estimated_time_minutes} minutes
+Description: {task_description if task_description else 'No additional description provided'}
 
-Selection Guidelines:
-1. Select exactly 1 slot from the candidate slots
-2. Consider task priority:
-   - HIGH priority: Prefer earlier slots, prioritize urgent scheduling
-   - MEDIUM priority: Balance between urgency and convenience
-   - LOW priority: Can be scheduled flexibly, prefer convenient times
-3. Select a slot that meets the duration requirement ({required_duration_minutes} minutes minimum)
-4. Consider the time of day that would be most productive for this task
-5. Prefer slots that don't conflict with typical work hours or personal time preferences
+=== AVAILABLE FREE TIME SLOTS ===
+You have access to {len(sorted_candidates)} candidate time slots. These are PERIODS when the user's calendar is free and available for scheduling. Each slot represents a continuous block of free time.
+
+IMPORTANT: Free slots can be much longer than the task duration. For example, a free slot might be 4 hours long (9:00 AM - 1:00 PM), but the task only needs {estimated_time_minutes} minutes. Your job is to:
+1. Identify which free slot to use
+2. Select a SPECIFIC START TIME within that free slot
+3. The task will run from your selected start time for {estimated_time_minutes} minutes
+
+Each slot includes:
+- index: Unique identifier (use this to reference the slot)
+- start: Start of the free period (ISO format) - earliest you can schedule
+- end: End of the free period (ISO format) - latest you can schedule
+- duration_minutes: Total available time in this free slot (can be much longer than task duration)
+- date: Date in YYYY-MM-DD format
+- time: Start time of free period in HH:MM format
+- day_of_week: Day name (Monday, Tuesday, etc.)
+
+Example: If a free slot is from 9:00 AM to 1:00 PM (4 hours), and the task needs 30 minutes, you could schedule it at 10:00 AM (within that free period), making it run from 10:00 AM to 10:30 AM.
+
+=== SELECTION CRITERIA ===
+
+1. DURATION REQUIREMENT (MANDATORY):
+   - The selected free slot MUST have duration_minutes >= {required_duration_minutes} minutes (enough time to fit the task)
+   - The task requires {estimated_time_minutes} minutes to complete
+   - Your selected start time must allow the task to complete before the free slot ends
+   - Formula: selected_start_time + {estimated_time_minutes} minutes <= free_slot_end_time
+   - Prefer slots with some buffer time if available (allows for slight overruns and natural breaks)
+
+2. PRIORITY-BASED SCHEDULING:
+   - HIGH priority tasks:
+     * Prioritize EARLIEST available slots
+     * Urgency is the primary concern
+     * Prefer slots today or tomorrow if available
+     * Time of day is secondary to urgency
+   
+   - MEDIUM priority tasks:
+     * Balance urgency with convenience
+     * Consider optimal time of day for productivity
+     * Prefer slots within the next few days
+     * Avoid scheduling too far in advance unless necessary
+   
+   - LOW priority tasks:
+     * Flexibility is key - convenience over urgency
+     * Can be scheduled further out
+     * Prioritize optimal time of day for the task type
+     * Consider user's typical schedule patterns
+
+3. TIME OF DAY CONSIDERATIONS:
+   - Analyze the task description to determine optimal time:
+     * Deep work / Focus tasks: Prefer morning hours (9 AM - 12 PM) when focus is highest
+     * Creative tasks: Consider when user is most creative (often mid-morning or afternoon)
+     * Administrative tasks: Can be scheduled during lower-energy periods
+     * Meetings/Calls: Consider business hours and time zones
+     * Physical tasks: Consider energy levels and availability
+   - Avoid scheduling during typical meal times unless task is brief
+   - Consider work-life balance (avoid late evening for work tasks if possible)
+
+4. DAY OF WEEK CONSIDERATIONS:
+   - Weekdays (Monday-Friday): Better for work-related tasks
+   - Weekends: Better for personal tasks, hobbies, or non-urgent work
+   - Consider the task description to match appropriate day type
+
+5. START TIME SELECTION WITHIN FREE SLOT:
+   - Once you've chosen a free slot, select the optimal START TIME within it
+   - Consider the task type when choosing start time:
+     * Morning tasks (9-11 AM): Best for high-focus work
+     * Mid-day tasks (11 AM-2 PM): Good for meetings, calls, collaborative work
+     * Afternoon tasks (2-5 PM): Suitable for creative or administrative work
+     * Evening tasks (5-8 PM): For personal tasks or low-energy work
+   - Leave buffer time before/after if the free slot allows (e.g., if slot is 2 hours and task is 30 min, don't schedule at the very start or end)
+   - Consider natural break points (e.g., on the hour, half-hour, or after typical meal times)
+   
+6. SLOT QUALITY ASSESSMENT:
+   - Free slots can be any length - focus on finding the right time, not the right slot size
+   - Consider slots that provide natural breaks before/after the task
+   - Avoid scheduling too close to the end of a free slot (leave some buffer)
+   - If multiple suitable free slots exist, choose the one that best matches the task's nature and optimal time
+
+=== SELECTION PROCESS ===
+
+1. Review ALL available free time slots below
+2. Filter free slots that have enough time to fit the task (duration_minutes >= {required_duration_minutes} minutes)
+3. Apply priority-based filtering (HIGH = earliest free slot, MEDIUM = balanced, LOW = convenient)
+4. Consider time of day and day of week appropriateness for this specific task
+5. Select ONE free slot that optimizes all criteria
+6. Within that free slot, choose the OPTIMAL START TIME for the task
+7. Ensure: selected_start_time + {estimated_time_minutes} minutes <= free_slot_end_time
+8. Provide clear reasoning for both the free slot choice and the specific start time
+
+=== OUTPUT FORMAT ===
 
 Respond with a JSON object containing:
 {{
-    "selected_indices": [single index from the candidate slots, e.g., [5]],
-    "reasoning": "Brief explanation of why this slot was selected"
+    "selected_slot_index": integer (the index of the free slot you chose, e.g., 5),
+    "task_start_time": "ISO format datetime string (e.g., '2024-01-15T10:00:00Z')",
+    "reasoning": "Detailed explanation of: (1) why this free slot was chosen, (2) why this specific start time within the slot is optimal, considering the task name, priority, description, and how it aligns with the selection criteria"
 }}
 
-Only return the index of the single slot that should be selected. The index corresponds to the "index" field in the candidate slot."""
+IMPORTANT:
+- Select exactly 1 free slot (by index)
+- Choose a SPECIFIC START TIME within that free slot (in ISO format)
+- The task_start_time must be >= free_slot_start and task_start_time + {estimated_time_minutes} minutes <= free_slot_end
+- Your reasoning should demonstrate you considered all task information, available free slots, and the optimal time within the chosen slot
+- Be specific about why this free slot and start time combination is optimal for this particular task"""
     else:
         # Habit-specific prompt
         frequency = habit_definition.get("frequency", "daily")
@@ -176,7 +270,41 @@ Respond with a JSON object containing:
 
 Only return the indices of slots that should be selected. The indices correspond to the "index" field in each candidate slot."""
     
-    prompt = f"""{system_prompt}
+    # Create prompt with slots data
+    if is_task:
+        # For tasks: Create a summary and detailed presentation
+        if slots_data:
+            slots_summary = f"""
+Total Available Slots: {len(slots_data)}
+Time Range: {slots_data[0]['date']} {slots_data[0]['time']} to {slots_data[-1]['date']} {slots_data[-1]['time']}
+Slots Meeting Duration Requirement ({required_duration_minutes} min): {sum(1 for s in slots_data if s['duration_minutes'] >= required_duration_minutes)}
+"""
+        else:
+            slots_summary = "\nNo slots available.\n"
+        
+        prompt = f"""{system_prompt}
+
+=== AVAILABLE FREE TIME SLOTS ===
+{slots_summary}
+
+Detailed Slot Information (sorted chronologically):
+{json.dumps(slots_data, indent=2)}
+
+=== YOUR TASK ===
+Carefully analyze all the information above:
+1. Review the task details (name: "{task_name}", priority: {priority}, duration: {estimated_time_minutes} min, description: "{task_description if task_description else 'N/A'}")
+2. Examine all {len(slots_data)} available FREE TIME SLOTS (these are periods of free time, not task slots)
+3. Apply the selection criteria based on priority ({priority}) and task characteristics
+4. Choose ONE free slot that can accommodate the task
+5. Select a SPECIFIC START TIME within that free slot for the {estimated_time_minutes}-minute task
+6. Ensure your selected start time allows the task to complete within the free slot boundaries
+
+NOTE: The task_start_time in your response should be in ISO format (e.g., "2024-01-15T10:00:00Z" or "2024-01-15T10:00:00+00:00"). Use the date and time from the free slot you selected, but choose the optimal hour and minute within that free period.
+
+Response (JSON only):"""
+    else:
+        # For habits: Simpler presentation
+        prompt = f"""{system_prompt}
 
 Candidate Slots (sorted by start time):
 {json.dumps(slots_data, indent=2)}
@@ -197,21 +325,77 @@ Response (JSON only):"""
             response_text = response_text.split("```")[1].split("```")[0].strip()
         
         result_data = json.loads(response_text)
-        selected_indices = result_data.get("selected_indices", [])
         reasoning = result_data.get("reasoning", "")
         
         print(f"Select Slots: LLM reasoning = {reasoning}")
-        print(f"Select Slots: LLM selected indices = {selected_indices}")
         
-        # Map indices back to actual slots
-        selected_slots = []
-        for idx in selected_indices:
-            # Find slot with matching index (1-based from LLM, 0-based in list)
-            slot_idx = idx - 1
-            if 0 <= slot_idx < len(sorted_candidates):
-                selected_slots.append(sorted_candidates[slot_idx])
-                slot_start = datetime.fromisoformat(sorted_candidates[slot_idx]["start"])
-                print(f"Select Slots: Selected slot {len(selected_slots)}: {slot_start} (duration: {sorted_candidates[slot_idx].get('duration_minutes', 0)} min)")
+        # Handle task vs habit response format
+        if is_task:
+            # For tasks: LLM returns selected_slot_index and task_start_time
+            selected_slot_index = result_data.get("selected_slot_index")
+            task_start_time_str = result_data.get("task_start_time")
+            
+            print(f"Select Slots: LLM selected slot index = {selected_slot_index}")
+            print(f"Select Slots: LLM selected task start time = {task_start_time_str}")
+            
+            if selected_slot_index is None or task_start_time_str is None:
+                raise ValueError("LLM response missing selected_slot_index or task_start_time")
+            
+            # Find the free slot (1-based index from LLM, 0-based in list)
+            slot_idx = selected_slot_index - 1
+            if not (0 <= slot_idx < len(sorted_candidates)):
+                raise ValueError(f"Selected slot index {selected_slot_index} is out of range")
+            
+            free_slot = sorted_candidates[slot_idx]
+            free_slot_start = datetime.fromisoformat(free_slot["start"])
+            free_slot_end = datetime.fromisoformat(free_slot["end"])
+            
+            # Parse the task start time
+            task_start_time = datetime.fromisoformat(task_start_time_str.replace('Z', '+00:00'))
+            if task_start_time.tzinfo is None:
+                task_start_time = task_start_time.replace(tzinfo=free_slot_start.tzinfo)
+            
+            # Calculate task end time
+            task_end_time = task_start_time + timedelta(minutes=estimated_time_minutes)
+            
+            # Validate that task fits within free slot
+            if task_start_time < free_slot_start:
+                print(f"Select Slots: WARNING - Task start time {task_start_time} is before free slot start {free_slot_start}. Adjusting to free slot start.")
+                task_start_time = free_slot_start
+                task_end_time = task_start_time + timedelta(minutes=estimated_time_minutes)
+            
+            if task_end_time > free_slot_end:
+                print(f"Select Slots: WARNING - Task end time {task_end_time} exceeds free slot end {free_slot_end}. Adjusting to fit within slot.")
+                task_end_time = free_slot_end
+                task_start_time = task_end_time - timedelta(minutes=estimated_time_minutes)
+                if task_start_time < free_slot_start:
+                    raise ValueError(f"Task duration {estimated_time_minutes} minutes is too long for free slot")
+            
+            # Create the selected slot with specific start/end times
+            selected_slot = {
+                "start": task_start_time.isoformat(),
+                "end": task_end_time.isoformat(),
+                "duration_minutes": estimated_time_minutes,
+                "original_free_slot_index": selected_slot_index
+            }
+            selected_slots = [selected_slot]
+            
+            print(f"Select Slots: Created task slot: {task_start_time} to {task_end_time} ({estimated_time_minutes} min)")
+            print(f"Select Slots: Within free slot: {free_slot_start} to {free_slot_end} ({free_slot.get('duration_minutes', 0)} min)")
+        else:
+            # For habits: Use the old format with selected_indices
+            selected_indices = result_data.get("selected_indices", [])
+            print(f"Select Slots: LLM selected indices = {selected_indices}")
+            
+            # Map indices back to actual slots
+            selected_slots = []
+            for idx in selected_indices:
+                # Find slot with matching index (1-based from LLM, 0-based in list)
+                slot_idx = idx - 1
+                if 0 <= slot_idx < len(sorted_candidates):
+                    selected_slots.append(sorted_candidates[slot_idx])
+                    slot_start = datetime.fromisoformat(sorted_candidates[slot_idx]["start"])
+                    print(f"Select Slots: Selected slot {len(selected_slots)}: {slot_start} (duration: {sorted_candidates[slot_idx].get('duration_minutes', 0)} min)")
         
         # If LLM didn't select enough, fall back to simple selection (only for habits, tasks should always be 1)
         if not is_task and len(selected_slots) < num_slots_to_select and len(selected_slots) < len(sorted_candidates):
@@ -280,11 +464,33 @@ Response (JSON only):"""
             
             # Check duration requirement
             if slot.get("duration_minutes", 0) >= required_duration_minutes:
-                selected_slots.append(slot)
-                last_selected_end_time = slot_end
                 if is_task:
-                    # For tasks, we only need one slot
-                    break
+                    # For tasks: create a slot with specific start/end times within the free slot
+                    # Use the start of the free slot as the task start time
+                    task_start_time = slot_start
+                    task_end_time = task_start_time + timedelta(minutes=estimated_time_minutes)
+                    
+                    # Ensure it fits within the free slot
+                    if task_end_time > slot_end:
+                        task_end_time = slot_end
+                        task_start_time = task_end_time - timedelta(minutes=estimated_time_minutes)
+                        if task_start_time < slot_start:
+                            # This slot is too small, skip it
+                            continue
+                    
+                    selected_slot = {
+                        "start": task_start_time.isoformat(),
+                        "end": task_end_time.isoformat(),
+                        "duration_minutes": estimated_time_minutes,
+                        "original_free_slot_index": None  # Fallback, no index available
+                    }
+                    selected_slots.append(selected_slot)
+                    print(f"Select Slots: Fallback - Created task slot: {task_start_time} to {task_end_time} ({estimated_time_minutes} min)")
+                    break  # For tasks, we only need one slot
+                else:
+                    # For habits: use the slot as-is
+                    selected_slots.append(slot)
+                    last_selected_end_time = slot_end
         
         print(f"Select Slots: Fallback: Selected {len(selected_slots)} slot(s)")
         print("Select Slots: Slot selection complete")
