@@ -7,6 +7,45 @@
 
 An intelligent AI-powered task scheduling and calendar management system that uses natural language to help users organize their time, schedule habits, and manage calendar events through Google Calendar integration.
 
+## 🏗️ Architecture
+
+### System Overview
+
+```
+┌─────────────────┐
+│  React Frontend │  (frontend/)
+│  (TypeScript)   │
+└────────┬────────┘
+         │ HTTP/REST
+         ▼
+┌─────────────────┐
+│   Flask API     │  (app/api/app.py)
+│   (Python)      │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  LangGraph AI   │  (app/ai_agent/)
+│     Agent       │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ Google Calendar │
+│  & Tasks APIs   │
+└─────────────────┘
+```
+
+### AI Agent Flow
+
+The AI agent uses a state machine pattern with LangGraph to orchestrate complex scheduling workflows. The following diagram illustrates the complete agent graph with all nodes and routing paths:
+
+![AI Agent Graph Nodes and Routing](ai_agent_graph_nodes_routing.png)
+
+**Node Types:** 🟣 Entry Point | 🟢 Control/Decision | 🔵 Calendar Pipeline | 🟣 Analysis | 🟠 Approval/Create | 🔴 Terminal
+
+**Key Flow:** Intent Classification → Habit/Task/Analysis paths → Approval → Event Creation
+
 ## 🎯 Overview
 
 This project combines a sophisticated LangGraph-based AI agent with a modern React frontend to provide an intuitive interface for:
@@ -76,40 +115,9 @@ The AI will:
 "Plan 1-hour reading time every evening"
 ```
 
-## 🏗️ Architecture
+## 📖 Detailed Architecture
 
-### System Overview
-
-```
-┌─────────────────┐
-│  React Frontend │  (frontend/)
-│  (TypeScript)   │
-└────────┬────────┘
-         │ HTTP/REST
-         ▼
-┌─────────────────┐
-│   Flask API     │  (app/api/app.py)
-│   (Python)      │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  LangGraph AI   │  (app/ai_agent/)
-│     Agent       │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│ Google Calendar │
-│  & Tasks APIs   │
-└─────────────────┘
-```
-
-### AI Agent Flow
-
-The AI agent uses a state machine pattern with LangGraph to orchestrate complex scheduling workflows. The following diagram illustrates the complete agent graph with all nodes and routing paths:
-
-![AI Agent Graph Nodes and Routing](ai_agent_graph_nodes_routing.png)
+### AI Agent Flow Details
 
 #### Flow Overview
 
