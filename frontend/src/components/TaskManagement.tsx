@@ -21,6 +21,7 @@ import {
 import type { Task, Category } from '../App';
 import type { TaskList } from '../services/api';
 import { TaskForm } from './TaskForm';
+import { AIPanel } from './AIPanel';
 
 interface TaskManagementProps {
   tasks: Task[];
@@ -59,6 +60,7 @@ export function TaskManagement({
   const [filterTime, setFilterTime] = useState<FilterTime>('all');
   const [filterPriority, setFilterPriority] = useState<FilterPriority>('all');
   const [showTaskForm, setShowTaskForm] = useState(false);
+  const [isPanelOpen, setIsPanelOpen] = useState(true);
 
   // Calculate statistics
   const stats = useMemo(() => {
@@ -327,45 +329,56 @@ export function TaskManagement({
         </div>
 
         {/* Main Content */}
-        <div className="flex gap-8">
+        <div className="relative flex gap-8">
           {/* Task List/Kanban */}
-          <div className="flex-1">
-            {viewMode === 'list' ? (
-              <TaskListView 
-                tasks={filteredTasks} 
-                onTaskClick={setSelectedTask}
-                onScheduleTask={onScheduleTask}
-              />
-            ) : (
-              <KanbanView 
-                tasks={filteredTasks} 
-                onTaskClick={setSelectedTask}
-                onScheduleTask={onScheduleTask}
-              />
-            )}
+          <div className={`flex-1 transition-all duration-500 ${isPanelOpen ? 'mr-[450px]' : 'mr-0'}`}>
+            <div className="flex gap-8">
+              <div className="flex-1">
+                {viewMode === 'list' ? (
+                  <TaskListView 
+                    tasks={filteredTasks} 
+                    onTaskClick={setSelectedTask}
+                    onScheduleTask={onScheduleTask}
+                  />
+                ) : (
+                  <KanbanView 
+                    tasks={filteredTasks} 
+                    onTaskClick={setSelectedTask}
+                    onScheduleTask={onScheduleTask}
+                  />
+                )}
+              </div>
+
+              {/* Task Detail Drawer */}
+              <AnimatePresence>
+                {selectedTask && (
+                  <TaskDetailDrawer
+                    task={selectedTask}
+                    onClose={() => setSelectedTask(null)}
+                    onUpdate={(updates) => {
+                      onUpdateTask(selectedTask.id, updates);
+                      setSelectedTask({ ...selectedTask, ...updates });
+                    }}
+                    onDelete={() => {
+                      onDeleteTask(selectedTask.id);
+                      setSelectedTask(null);
+                    }}
+                    onSchedule={() => {
+                      onScheduleTask(selectedTask.id);
+                      setSelectedTask(null);
+                    }}
+                  />
+                )}
+              </AnimatePresence>
+            </div>
           </div>
 
-          {/* Task Detail Drawer */}
-          <AnimatePresence>
-            {selectedTask && (
-              <TaskDetailDrawer
-                task={selectedTask}
-                onClose={() => setSelectedTask(null)}
-                onUpdate={(updates) => {
-                  onUpdateTask(selectedTask.id, updates);
-                  setSelectedTask({ ...selectedTask, ...updates });
-                }}
-                onDelete={() => {
-                  onDeleteTask(selectedTask.id);
-                  setSelectedTask(null);
-                }}
-                onSchedule={() => {
-                  onScheduleTask(selectedTask.id);
-                  setSelectedTask(null);
-                }}
-              />
-            )}
-          </AnimatePresence>
+          {/* AI Panel */}
+          <AIPanel
+            isOpen={isPanelOpen}
+            onToggle={() => setIsPanelOpen(!isPanelOpen)}
+            onAddTask={onAddTask}
+          />
         </div>
 
         {/* AI Suggestions */}
