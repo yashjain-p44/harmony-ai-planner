@@ -36,9 +36,17 @@ export function ApprovalBox({
   };
 
   const slots = summary.slots_summary || [];
-  const habitName = summary.habit_name || 'Scheduled Habit';
+  
+  // Determine if this is a task or habit
+  const isTask = !!summary.task_name;
+  const itemName = isTask 
+    ? (summary.task_name || 'Scheduled Task')
+    : (summary.habit_name || 'Scheduled Habit');
   const frequency = summary.frequency || 'unknown';
-  const duration = summary.duration_minutes || 30;
+  const duration = isTask 
+    ? (summary.estimated_time_minutes || summary.duration_minutes || 30)
+    : (summary.duration_minutes || 30);
+  const priority = summary.priority;
 
   // Format date to be more readable
   const formatDate = (dateStr: string): string => {
@@ -79,7 +87,16 @@ export function ApprovalBox({
           📅 Schedule Approval Request
         </h4>
         <p className="text-sm text-gray-600 mb-3">
-          Ready to schedule <strong>{habitName}</strong> ({frequency}, {duration} min)
+          Ready to schedule <strong>{itemName}</strong>{' '}
+          {isTask ? (
+            priority ? (
+              <>(Priority: {priority}, {duration} min)</>
+            ) : (
+              <>({duration} min)</>
+            )
+          ) : (
+            <>({frequency}, {duration} min)</>
+          )}
         </p>
         
         {slots.length > 0 && (
