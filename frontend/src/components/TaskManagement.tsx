@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   ArrowLeft, 
@@ -61,6 +61,70 @@ export function TaskManagement({
   const [filterPriority, setFilterPriority] = useState<FilterPriority>('all');
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [isPanelOpen, setIsPanelOpen] = useState(true);
+  const aiPanelSendMessageRef = useRef<((message: string) => void) | null>(null);
+
+  // Format task details into a scheduling prompt
+  const formatTaskForScheduling = (task: Task): string => {
+    let prompt = `Please schedule this task: "${task.title}"`;
+    
+    if (task.duration) {
+      prompt += ` (${task.duration} hour${task.duration !== 1 ? 's' : ''})`;
+    }
+    
+    if (task.deadline) {
+      const deadlineDate = new Date(task.deadline);
+      prompt += `. Deadline: ${deadlineDate.toLocaleDateString()}`;
+    }
+    
+    if (task.category) {
+      prompt += `. Category: ${task.category}`;
+    }
+    
+    if (task.constraints) {
+      const constraints: string[] = [];
+      if (task.constraints.location) {
+        constraints.push(`location: ${task.constraints.location}`);
+      }
+      if (task.constraints.timeOfDay) {
+        constraints.push(`preferred time: ${task.constraints.timeOfDay}`);
+      }
+      if (task.constraints.energyLevel) {
+        constraints.push(`energy level: ${task.constraints.energyLevel}`);
+      }
+      if (constraints.length > 0) {
+        prompt += `. Constraints: ${constraints.join(', ')}`;
+      }
+    }
+    
+    if (task.notes) {
+      prompt += `. Notes: ${task.notes}`;
+    }
+    
+    prompt += '.';
+    
+    return prompt;
+  };
+
+  // Handle schedule task click - send to AI panel
+  const handleScheduleTaskClick = (taskId: string) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+    
+    // Ensure panel is open
+    if (!isPanelOpen) {
+      setIsPanelOpen(true);
+    }
+    
+    // Format task details and send to chatbot
+    const prompt = formatTaskForScheduling(task);
+    
+    // Wait a bit for panel to open, then send message
+    setTimeout(() => {
+      if (aiPanelSendMessageRef.current) {
+        aiPanelSendMessageRef.current(prompt);
+      }
+    }, 300);
+  };
 
   // Calculate statistics
   const stats = useMemo(() => {
@@ -338,13 +402,13 @@ export function TaskManagement({
                   <TaskListView 
                     tasks={filteredTasks} 
                     onTaskClick={setSelectedTask}
-                    onScheduleTask={onScheduleTask}
+                    onScheduleTask={handleScheduleTaskClick}
                   />
                 ) : (
                   <KanbanView 
                     tasks={filteredTasks} 
                     onTaskClick={setSelectedTask}
-                    onScheduleTask={onScheduleTask}
+                    onScheduleTask={handleScheduleTaskClick}
                   />
                 )}
               </div>
@@ -364,7 +428,7 @@ export function TaskManagement({
                       setSelectedTask(null);
                     }}
                     onSchedule={() => {
-                      onScheduleTask(selectedTask.id);
+                      handleScheduleTaskClick(selectedTask.id);
                       setSelectedTask(null);
                     }}
                   />
@@ -378,6 +442,7 @@ export function TaskManagement({
             isOpen={isPanelOpen}
             onToggle={() => setIsPanelOpen(!isPanelOpen)}
             onAddTask={onAddTask}
+            onSendMessageRef={aiPanelSendMessageRef}
           />
         </div>
 
