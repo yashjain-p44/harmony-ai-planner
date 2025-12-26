@@ -7,7 +7,14 @@ Run this script to verify that the calendar repository is working correctly.
 
 import datetime
 import sys
-from calendar_repository import GoogleCalendarRepository
+from pathlib import Path
+
+# Add project root to path
+project_root = Path(__file__).parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
+from app.src.calendar_repository import GoogleCalendarRepository
 from googleapiclient.errors import HttpError
 
 

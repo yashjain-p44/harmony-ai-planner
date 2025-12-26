@@ -11,8 +11,8 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 
 # Get the path to the credentials file
-script_dir = Path(__file__).parent
-creds_path = script_dir / "app" / "creds" / "ai-task-master-7dc79-firebase-adminsdk-fbsvc-9d2fe1e4e1.json"
+project_root = Path(__file__).parent.parent
+creds_path = project_root / "app" / "creds" / "ai-task-master-7dc79-firebase-adminsdk-fbsvc-9d2fe1e4e1.json"
 
 def test_firestore_connection():
     """Test Firestore connection and query conversations collection."""
