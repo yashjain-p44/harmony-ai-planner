@@ -60,7 +60,7 @@ export function TaskManagement({
   const [filterTime, setFilterTime] = useState<FilterTime>('all');
   const [filterPriority, setFilterPriority] = useState<FilterPriority>('all');
   const [showTaskForm, setShowTaskForm] = useState(false);
-  const [isPanelOpen, setIsPanelOpen] = useState(true);
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
   const aiPanelSendMessageRef = useRef<((message: string) => void) | null>(null);
   // Local state to track scheduled status for demo (frontend-only, no API calls)
   const [scheduledTaskIds, setScheduledTaskIds] = useState<Set<string>>(new Set());
