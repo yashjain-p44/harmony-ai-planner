@@ -81,6 +81,12 @@ export function CalendarView({ tasks, viewMode, selectedDate, onTaskClick, prefe
   return (
     <div className="h-full overflow-auto p-8">
       <div className="glass-strong rounded-2xl overflow-hidden shadow-lg border border-gray-200" role="region" aria-label="Weekly calendar view">
+        {/* Month Header */}
+        <div className="p-6 border-b border-gray-200 bg-white/50">
+          <h2 className="text-3xl text-gray-900 text-center font-bold">
+            {selectedDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+          </h2>
+        </div>
         {/* Week Header */}
         <div className="grid grid-cols-8 border-b border-gray-200 bg-white/50">
           <div className="p-4 border-r border-gray-200">
@@ -97,7 +103,7 @@ export function CalendarView({ tasks, viewMode, selectedDate, onTaskClick, prefe
                 role="columnheader"
                 aria-label={day.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
               >
-                <div className="text-sm text-gray-600 font-semibold">
+                <div className="text-sm text-gray-800 font-semibold">
                   {day.toLocaleDateString('en-US', { weekday: 'short' })}
                 </div>
                 <div className={`text-xl mt-1 font-bold ${isToday ? 'text-blue-700' : 'text-gray-900'}`}>
@@ -239,13 +245,13 @@ function MonthView({
   return (
     <div className="h-full overflow-auto p-8">
       <div className="glass-strong rounded-2xl overflow-hidden border-white/10 p-6">
-        <h2 className="text-3xl text-white mb-6 text-center">
+        <h2 className="text-3xl text-gray-900 mb-6 text-center font-bold">
           {selectedDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
         </h2>
 
         <div className="grid grid-cols-7 gap-2">
           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-            <div key={day} className="text-center text-slate-400 py-2">
+            <div key={day} className="text-center text-gray-700 py-2 font-semibold">
               {day}
             </div>
           ))}
@@ -264,7 +270,7 @@ function MonthView({
                     : 'border-white/10 glass'
                 } ${!isCurrentMonth ? 'opacity-40' : ''}`}
               >
-                <div className={`text-sm mb-1 ${isToday ? 'text-cyan-400' : 'text-white'}`}>
+                <div className={`text-sm mb-1 font-semibold ${isToday ? 'text-cyan-600' : 'text-gray-900'}`}>
                   {day.getDate()}
                 </div>
                 <div className="space-y-1">
